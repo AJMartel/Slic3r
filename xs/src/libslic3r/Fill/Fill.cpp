@@ -15,11 +15,11 @@ namespace Slic3r {
 
 struct SurfaceGroupAttrib
 {
-    SurfaceGroupAttrib() : is_solid(false), fw(0.f), pattern(-1) {}
+    SurfaceGroupAttrib() : is_solid(false), flow_width(0.f), pattern(-1) {}
     bool operator==(const SurfaceGroupAttrib &other) const
-        { return is_solid == other.is_solid && fw == other.fw && pattern == other.pattern; }
+        { return is_solid == other.is_solid && flow_width == other.flow_width && pattern == other.pattern; }
     bool    is_solid;
-    float   fw;
+    float   flow_width;
     // pattern is of type InfillPattern, -1 for an unset pattern.
     int     pattern;
 };
@@ -68,7 +68,7 @@ void make_fill(LayerRegion &layerm, ExtrusionEntityCollection &out)
                 const Surface &surface = *groups[i].front();
                 if (surface.is_solid() && (!surface.is_bridge() || layerm.layer()->id() == 0)) {
                     group_attrib[i].is_solid = true;
-                    group_attrib[i].fw = (surface.surface_type == stTop) ? top_solid_infill_flow.width : solid_infill_flow.width;
+                    group_attrib[i].flow_width = (surface.surface_type == stTop) ? top_solid_infill_flow.width : solid_infill_flow.width;
                     group_attrib[i].pattern = surface.is_external() ? layerm.region()->config.external_fill_pattern.value : ipRectilinear;
                 }
             }
@@ -149,8 +149,7 @@ void make_fill(LayerRegion &layerm, ExtrusionEntityCollection &out)
 //        );
     }
 
-    for (Surfaces::const_iterator surface_it = surfaces.begin(); surface_it != surfaces.end(); ++ surface_it) {
-        const Surface &surface = *surface_it;
+    for (const Surface &surface : surfaces) {
         if (surface.surface_type == stInternalVoid)
             continue;
         InfillPattern  fill_pattern = layerm.region()->config.fill_pattern.value;
@@ -168,11 +167,7 @@ void make_fill(LayerRegion &layerm, ExtrusionEntityCollection &out)
             continue;
         
         // get filler object
-#if SLIC3R_CPPVER >= 11
         std::unique_ptr<Fill> f = std::unique_ptr<Fill>(Fill::new_from_type(fill_pattern));
-#else
-        std::auto_ptr<Fill> f = std::auto_ptr<Fill>(Fill::new_from_type(fill_pattern));
-#endif
         f->set_bounding_box(layerm.layer()->object()->bounding_box());
         
         // calculate the actual flow we'll be using for this infill
@@ -220,7 +215,7 @@ void make_fill(LayerRegion &layerm, ExtrusionEntityCollection &out)
 
         f->layer_id = layerm.layer()->id();
         f->z = layerm.layer()->print_z;
-        f->angle = Geometry::deg2rad(layerm.region()->config.fill_angle.value);
+        f->angle = float(Geometry::deg2rad(layerm.region()->config.fill_angle.value));
         // Maximum length of the perimeter segment linking two infill lines.
         f->link_max_length = scale_(link_max_length);
         // Used by the concentric infill pattern to clip the loops to create extrusion paths.
@@ -266,10 +261,10 @@ void make_fill(LayerRegion &layerm, ExtrusionEntityCollection &out)
     // Unpacks the collection, creates multiple collections per path.
     // The path type could be ExtrusionPath, ExtrusionLoop or ExtrusionEntityCollection.
     // Why the paths are unpacked?
-    for (ExtrusionEntitiesPtr::iterator thin_fill = layerm.thin_fills.entities.begin(); thin_fill != layerm.thin_fills.entities.end(); ++ thin_fill) {
+    for (const ExtrusionEntity *thin_fill : layerm.thin_fills.entities) {
         ExtrusionEntityCollection &collection = *(new ExtrusionEntityCollection());
         out.entities.push_back(&collection);
-        collection.entities.push_back((*thin_fill)->clone());
+        collection.entities.push_back(thin_fill->clone());
     }
 }
 

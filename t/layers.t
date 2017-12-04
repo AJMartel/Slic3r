@@ -5,6 +5,7 @@ use warnings;
 BEGIN {
     use FindBin;
     use lib "$FindBin::Bin/../lib";
+    use local::lib "$FindBin::Bin/../local-lib";
 }
 
 use List::Util qw(first);
@@ -12,7 +13,7 @@ use Slic3r;
 use Slic3r::Test qw(_eq);
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
 
     my $test = sub {
         my ($conf) = @_;

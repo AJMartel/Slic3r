@@ -8,10 +8,10 @@ use File::Spec;
 
 my %prereqs = qw(
     Devel::CheckLib                 0
-    Encode                          0
-    Encode::Locale                  1.05
     ExtUtils::MakeMaker             6.80
     ExtUtils::ParseXS               3.22
+    ExtUtils::XSpp                  0
+    ExtUtils::Typemaps              0
     File::Basename                  0
     File::Spec                      0
     Getopt::Long                    0
@@ -24,17 +24,15 @@ my %prereqs = qw(
     IO::Scalar                      0
     threads                         1.96
     Time::HiRes                     0
-    Unicode::Normalize              0
 );
 my %recommends = qw(
     Class::XSAccessor               0
-    XML::SAX::ExpatXS               0
     Test::Harness                   0
 );
 
 my $sudo    = grep { $_ eq '--sudo' } @ARGV;
 my $gui     = grep { $_ eq '--gui' } @ARGV;
-my $xs_only = grep { $_ eq '--xs' }  @ARGV;
+my $nolocal = grep { $_ eq '--nolocal' }  @ARGV;
 if ($gui) {
     %prereqs = qw(
     Class::Accessor                 0
@@ -44,18 +42,14 @@ if ($gui) {
     %recommends = qw(
     Growl::GNTP                     0.15
     Wx::GLCanvas                    0
-    OpenGL                          <0.70
     LWP::UserAgent                  0
     Net::Bonjour                    0
     );
     if ($^O eq 'MSWin32') {
         $recommends{"Win32::TieRegistry"} = 0;
-        
         # we need an up-to-date Win32::API because older aren't thread-safe (GH #2517)
         $prereqs{'Win32::API'} = 0.79;
     }
-} elsif ($xs_only) {
-    %prereqs = %recommends = ();
 }
 
 my @missing_prereqs = ();
@@ -108,13 +102,17 @@ EOF
     my @cpanm_args = ();
     push @cpanm_args, "--sudo" if $sudo;
 
+    # install local::lib without --local-lib otherwise it's not usable afterwards
+    if (!eval "use local::lib qw(local-lib); 1") {
+        my $res = system $cpanm, @cpanm_args, 'local::lib';
+        warn "Warning: local::lib is required. You might need to run the `cpanm --sudo local::lib` command in order to install it.\n"
+            if $res != 0;
+    }
+    
+    push @cpanm_args, ('--local-lib', 'local-lib') if ! $nolocal;
+
     # make sure our cpanm is updated (old ones don't support the ~ syntax)
     system $cpanm, @cpanm_args, 'App::cpanminus';
-    
-    # install the Windows-compatible Math::Libm
-    if ($^O eq 'MSWin32' && !eval "use Math::Libm; 1") {
-        system $cpanm, @cpanm_args, 'https://github.com/alexrj/Math-Libm/tarball/master';
-    }
     
     my %modules = (%prereqs, %recommends);
     foreach my $module (sort keys %modules) {
@@ -123,18 +121,10 @@ EOF
         
         # temporary workaround for upstream bug in test
         push @cmd, '--notest'
-            if $module =~ /^(?:OpenGL|Math::PlanePath|Test::Harness)$/;
+            if $module =~ /^(?:OpenGL|Test::Harness)$/;
         
         push @cmd, "$module~$version";
-        if ($module eq 'XML::SAX::ExpatXS' && $^O eq 'MSWin32') {
-            my $mingw = 'C:\dev\CitrusPerl\mingw64';
-            $mingw = 'C:\dev\CitrusPerl\mingw32' if !-d $mingw;
-            if (!-d $mingw) {
-                print "Could not find the MinGW directory at $mingw; skipping XML::SAX::ExpatXS (only needed for faster parsing of AMF files)\n";
-            } else {
-                push @cmd, sprintf('--configure-args="EXPATLIBPATH=%s\lib EXPATINCPATH=%s\include"', $mingw, $mingw);
-            }
-        }
+
         my $res = system @cmd;
         if ($res != 0) {
             if (exists $prereqs{$module}) {
@@ -144,36 +134,19 @@ EOF
             }
         }
     }
-    
-    if (!$gui) {
-        # clean xs directory before reinstalling, to make sure Build is called
-        # with current perl binary
-        if (-e './xs/Build') {
-            if ($^O eq 'MSWin32') {
-                system '.\xs\Build', 'distclean';
-            } else {
-                system './xs/Build', 'distclean';
-            }
-        }
-        my $res = system $cpanm, @cpanm_args, '--reinstall', '--verbose', './xs';
-        if ($res != 0) {
-            die "The XS/C++ code failed to compile, aborting\n";
-        }
-    }
 }
 
-if (@missing_prereqs) {
-    printf "The following prerequisites failed to install: %s\n", join(', ', @missing_prereqs);
-    exit 1;
-} elsif (!$gui) {
-    eval "use App::Prove; 1" or die "Failed to load App::Prove";
-    my $res = App::Prove->new->run ? 0 : 1;
-    if ($res == 0) {
-        print "If you also want to use the GUI you can now run `perl Build.PL --gui` to install the required modules.\n";
-    } else {
-        print "Some tests failed. Please report the failure to the author!\n";
-    }
-    exit $res;
+print "\n";
+if ($gui) {
+    print "Perl dependencies for the Slic3r GUI were installed.\n";
+} else {
+    print "Perl dependencies for Slic3r were installed.\n";
+    print "If you also want to use the GUI you can now run `perl Build.PL --gui` to install the required modules.\n";
 }
-
+print "\n";
+print "In the next step, you need to build the Slic3r C++ library.\n";
+print "1) Create a build directory and change to it\n";
+print "2) run cmake .. -DCMAKE_BUILD_TYPE=Release\n";
+print "3) run make\n";
+print "4) to execute the automatic tests, run ctest --verbose\n";
 __END__

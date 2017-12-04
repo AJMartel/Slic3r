@@ -5,7 +5,6 @@ use strict;
 use warnings;
 use utf8;
 
-use Slic3r::Geometry qw(PI X Y unscale);
 use Wx qw(:dialog :id :misc :sizer :choicebook :button :bitmap
     wxBORDER_NONE wxTAB_TRAVERSAL);
 use Wx::Event qw(EVT_CLOSE EVT_BUTTON);
@@ -35,10 +34,8 @@ sub new {
         my $btn = Wx::Button->new($self, -1, $label, wxDefaultPosition, wxDefaultSize,
             wxBU_LEFT | wxBU_EXACTFIT);
         $btn->SetFont($bold ? $Slic3r::GUI::small_bold_font : $Slic3r::GUI::small_font);
-        if ($Slic3r::GUI::have_button_icons) {
-            $btn->SetBitmap(Wx::Bitmap->new($Slic3r::var->("$icon.png"), wxBITMAP_TYPE_PNG));
-            $btn->SetBitmapPosition($pos);
-        }
+        $btn->SetBitmap(Wx::Bitmap->new(Slic3r::var("$icon.png"), wxBITMAP_TYPE_PNG));
+        $btn->SetBitmapPosition($pos);
         EVT_BUTTON($self, $btn, $handler);
         $sizer->Add($btn, 1, wxEXPAND | wxALL, 0);
     };

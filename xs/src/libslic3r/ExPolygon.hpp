@@ -149,7 +149,6 @@ inline Polylines to_polylines(const ExPolygons &src)
     return polylines;
 }
 
-#if SLIC3R_CPPVER >= 11
 inline Polylines to_polylines(ExPolygon &&src)
 {
     Polylines polylines;
@@ -166,6 +165,7 @@ inline Polylines to_polylines(ExPolygon &&src)
     assert(idx == polylines.size());
     return polylines;
 }
+
 inline Polylines to_polylines(ExPolygons &&src)
 {
     Polylines polylines;
@@ -184,7 +184,6 @@ inline Polylines to_polylines(ExPolygons &&src)
     assert(idx == polylines.size());
     return polylines;
 }
-#endif
 
 inline Polygons to_polygons(const ExPolygon &src)
 {
@@ -326,7 +325,7 @@ namespace boost { namespace polygon {
         }
 
         // Get the winding direction of the polygon
-        static inline winding_direction winding(const Slic3r::ExPolygon& t) {
+        static inline winding_direction winding(const Slic3r::ExPolygon& /* t */) {
             return unknown_winding;
         }
     };
@@ -391,8 +390,8 @@ namespace boost { namespace polygon {
         }
 
         //don't worry about these, just return false from them
-        static inline bool clean(const Slic3r::ExPolygons& polygon_set) { return false; }
-        static inline bool sorted(const Slic3r::ExPolygons& polygon_set) { return false; }
+        static inline bool clean(const Slic3r::ExPolygons& /* polygon_set */) { return false; }
+        static inline bool sorted(const Slic3r::ExPolygons& /* polygon_set */) { return false; }
     };
 
     template <>

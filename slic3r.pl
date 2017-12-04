@@ -6,6 +6,7 @@ use warnings;
 BEGIN {
     use FindBin;
     use lib "$FindBin::Bin/lib";
+    use local::lib '--no-create', "$FindBin::Bin/local-lib";
 }
 
 use File::Basename qw(basename);
@@ -13,9 +14,13 @@ use Getopt::Long qw(:config no_auto_abbrev);
 use List::Util qw(first);
 use POSIX qw(setlocale LC_NUMERIC);
 use Slic3r;
+use Slic3r::Geometry qw(deg2rad);
 use Time::HiRes qw(gettimeofday tv_interval);
 $|++;
 binmode STDOUT, ':utf8';
+
+# Convert all parameters from the local code page to utf8 on Windows.
+@ARGV = map Slic3r::decode_path($_), @ARGV if $^O eq 'MSWin32';
 
 our %opt = ();
 my %cli_options = ();
@@ -26,6 +31,7 @@ my %cli_options = ();
         
         'debug'                 => \$Slic3r::debug,
         'gui'                   => \$opt{gui},
+        'no-gui'                   => \$opt{no_gui},
         'o|output=s'            => \$opt{output},
         
         'save=s'                => \$opt{save},
@@ -34,7 +40,7 @@ my %cli_options = ();
         'ignore-nonexistent-config' => \$opt{ignore_nonexistent_config},
         'no-controller'         => \$opt{no_controller},
         'no-plater'             => \$opt{no_plater},
-        'gui-mode=s'            => \$opt{gui_mode},
+        'gui-mode=s'            => \$opt{obsolete_ignore_this_option_gui_mode},
         'datadir=s'             => \$opt{datadir},
         'export-svg'            => \$opt{export_svg},
         'merge|m'               => \$opt{merge},
@@ -44,7 +50,7 @@ my %cli_options = ();
         'info'                  => \$opt{info},
         
         'scale=f'               => \$opt{scale},
-        'rotate=i'              => \$opt{rotate},
+        'rotate=f'              => \$opt{rotate},
         'duplicate=i'           => \$opt{duplicate},
         'duplicate-grid=s'      => \$opt{duplicate_grid},
         'print-center=s'        => \$opt{print_center},
@@ -64,7 +70,6 @@ my %cli_options = ();
 my @external_configs = ();
 if ($opt{load}) {
     foreach my $configfile (@{$opt{load}}) {
-        $configfile = Slic3r::decode_path($configfile);
         if (-e $configfile) {
             push @external_configs, Slic3r::Config->load($configfile);
         } elsif (-e "$FindBin::Bin/$configfile") {
@@ -88,33 +93,30 @@ if ($opt{save}) {
     if (@{$cli_config->get_keys} > 0) {
         $cli_config->save($opt{save});
     } else {
-        Slic3r::Config->new_from_defaults->save($opt{save});
+        Slic3r::Config::new_from_defaults->save($opt{save});
     }
 }
 
 # apply command line config on top of default config
-my $config = Slic3r::Config->new_from_defaults;
+my $config = Slic3r::Config::new_from_defaults;
 $config->apply($cli_config);
 
 # launch GUI
 my $gui;
-if ((!@ARGV || $opt{gui}) && !$opt{save} && eval "require Slic3r::GUI; 1") {
+if ((!@ARGV || $opt{gui}) && !$opt{no_gui} && !$opt{save} && eval "require Slic3r::GUI; 1") {
     {
         no warnings 'once';
         $Slic3r::GUI::datadir       = Slic3r::decode_path($opt{datadir} // '');
         $Slic3r::GUI::no_controller = $opt{no_controller};
         $Slic3r::GUI::no_plater     = $opt{no_plater};
-        $Slic3r::GUI::mode          = $opt{gui_mode};
         $Slic3r::GUI::autosave      = $opt{autosave};
     }
     $gui = Slic3r::GUI->new;
     setlocale(LC_NUMERIC, 'C');
     $gui->{mainframe}->load_config_file($_) for @{$opt{load}};
     $gui->{mainframe}->load_config($cli_config);
-    foreach my $input_file (@ARGV) {
-        $input_file = Slic3r::decode_path($input_file);
-        $gui->{mainframe}{plater}->load_file($input_file) unless $opt{no_plater};
-    }
+    my @input_files = @ARGV;
+    $gui->{mainframe}{plater}->load_files(\@input_files) unless $opt{no_plater};
     $gui->MainLoop;
     exit;
 }
@@ -125,12 +127,11 @@ if (@ARGV) {  # slicing from command line
     
     if ($opt{repair}) {
         foreach my $file (@ARGV) {
-            $file = Slic3r::decode_path($file);
             die "Repair is currently supported only on STL files\n"
-                if $file !~ /\.stl$/i;
+                if $file !~ /\.[sS][tT][lL]$/;
             
             my $output_file = $file;
-            $output_file =~ s/\.(stl)$/_fixed.obj/i;
+            $output_file =~ s/\.([sS][tT][lL])$/_fixed.obj/;
             my $tmesh = Slic3r::TriangleMesh->new;
             $tmesh->ReadSTLFile($file);
             $tmesh->repair;
@@ -141,9 +142,7 @@ if (@ARGV) {  # slicing from command line
     
     if ($opt{cut}) {
         foreach my $file (@ARGV) {
-            $file = Slic3r::decode_path($file);
             my $model = Slic3r::Model->read_from_file($file);
-            $model->add_default_instances;
             my $mesh = $model->mesh;
             $mesh->translate(0, 0, -$mesh->bounding_box->z_min);
             my $upper = Slic3r::TriangleMesh->new;
@@ -161,9 +160,7 @@ if (@ARGV) {  # slicing from command line
     
     if ($opt{split}) {
         foreach my $file (@ARGV) {
-            $file = Slic3r::decode_path($file);
             my $model = Slic3r::Model->read_from_file($file);
-            $model->add_default_instances;
             my $mesh = $model->mesh;
             $mesh->repair;
             
@@ -171,14 +168,13 @@ if (@ARGV) {  # slicing from command line
             foreach my $new_mesh (@{$mesh->split}) {
                 my $output_file = sprintf '%s_%02d.stl', $file, ++$part_count;
                 printf "Writing to %s\n", basename($output_file);
-                Slic3r::Format::STL->write_file($output_file, $new_mesh, binary => 1);
+                $new_mesh->write_binary($output_file);
             }
         }
         exit;
     }
     
     while (my $input_file = shift @ARGV) {
-        $input_file = Slic3r::decode_path($input_file);
         my $model;
         if ($opt{merge}) {
             my @models = map Slic3r::Model->read_from_file($_), $input_file, (splice @ARGV, 0);
@@ -201,7 +197,7 @@ if (@ARGV) {  # slicing from command line
         
         my $sprint = Slic3r::Print::Simple->new(
             scale           => $opt{scale}          // 1,
-            rotate          => $opt{rotate}         // 0,
+            rotate          => deg2rad($opt{rotate} // 0),
             duplicate       => $opt{duplicate}      // 1,
             duplicate_grid  => $opt{duplicate_grid} // [1,1],
             print_center    => $opt{print_center}   // Slic3r::Pointf->new(100,100),
@@ -213,8 +209,11 @@ if (@ARGV) {  # slicing from command line
             output_file     => $opt{output},
         );
         
+        # This is delegated to C++ PrintObject::apply_config().
         $sprint->apply_config($config);
         $sprint->set_model($model);
+        # Do the apply_config once again to validate the layer height profiles at all the newly added PrintObjects.
+        $sprint->apply_config($config);
         
         if ($opt{export_svg}) {
             $sprint->export_svg;
@@ -238,16 +237,7 @@ if (@ARGV) {  # slicing from command line
 
 sub usage {
     my ($exit_code) = @_;
-    
-    my $config = Slic3r::Config->new_from_defaults->as_hash;
-    
-    my $j = '';
-    if ($Slic3r::have_threads) {
-        $j = <<"EOF";
-    -j, --threads <num> Number of threads to use (1+, default: $config->{threads})
-EOF
-    }
-    
+    my $config = Slic3r::Config::new_from_defaults->as_hash;
     print <<"EOF";
 Slic3r $Slic3r::VERSION is a STL-to-GCODE translator for RepRap 3D printers
 written by Alessandro Ranellucci <aar\@cpan.org> - http://slic3r.org/
@@ -272,13 +262,14 @@ Usage: slic3r.pl [ OPTIONS ] [ file.stl ] [ file2.stl ] ...
                         them as <name>_upper.stl and <name>_lower.stl
     --split             Split the shells contained in given STL file into several STL files
     --info              Output information about the supplied file(s) and exit
-    
-$j
+    -j, --threads <num> Number of threads to use (1+, default: $config->{threads})
+
   GUI options:
     --gui               Forces the GUI launch instead of command line slicing (if you
                         supply a model file, it will be loaded into the plater)
     --no-plater         Disable the plater tab
-    --gui-mode          Overrides the configured mode (simple/expert)
+    --no-gui            Forces the command line slicing instead of gui. 
+                        This takes precedence over --gui if both are present.
     --autosave <file>   Automatically export current configuration to the specified file
 
   Output options:
@@ -298,16 +289,13 @@ $j
                         (default: 100,100)
     --z-offset          Additional height in mm to add to vertical coordinates
                         (+/-, default: $config->{z_offset})
-    --gcode-flavor      The type of G-code to generate (reprap/teacup/makerware/sailfish/mach3/machinekit/no-extrusion,
+    --gcode-flavor      The type of G-code to generate (reprap/teacup/repetier/makerware/sailfish/mach3/machinekit/smoothie/no-extrusion,
                         default: $config->{gcode_flavor})
     --use-relative-e-distances Enable this to get relative E values (default: no)
     --use-firmware-retraction  Enable firmware-controlled retraction using G10/G11 (default: no)
     --use-volumetric-e  Express E in cubic millimeters and prepend M200 (default: no)
-    --gcode-arcs        Use G2/G3 commands for native arcs (experimental, not supported
-                        by all firmwares)
+    --set-and-wait-temperatures Use M190 instead of M140 for temperature changes past the first (default: no)
     --gcode-comments    Make G-code verbose by adding comments (default: no)
-    --pressure-advance  Adjust pressure using the experimental advance algorithm (K constant,
-                        set zero to disable; default: $config->{pressure_advance})
     
   Filament options:
     --filament-diameter Diameter in mm of your raw filament (default: $config->{filament_diameter}->[0])
@@ -318,7 +306,7 @@ $j
     --temperature       Extrusion temperature in degree Celsius, set 0 to disable (default: $config->{temperature}->[0])
     --first-layer-temperature Extrusion temperature for the first layer, in degree Celsius,
                         set 0 to disable (default: same as --temperature)
-    --bed-temperature   Heated bed temperature in degree Celsius, set 0 to disable (default: $config->{bed_temperature})
+    --bed-temperature   Heated bed temperature in degree Celsius, set 0 to disable (default: $config->{bed_temperature}[0])
     --first-layer-bed-temperature Heated bed temperature for the first layer, in degree Celsius,
                         set 0 to disable (default: same as --bed-temperature)
     
@@ -445,6 +433,7 @@ $j
    Retraction options:
     --retract-length    Length of retraction in mm when pausing extrusion (default: $config->{retract_length}[0])
     --retract-speed     Speed for retraction in mm/s (default: $config->{retract_speed}[0])
+    --deretract-speed   Speed for deretraction (loading of filament after a retract) in mm/s (default: $config->{retract_speed}[0])
     --retract-restart-extra
                         Additional amount of filament in mm to push after
                         compensating retraction (default: $config->{retract_restart_extra}[0])
@@ -466,15 +455,15 @@ $j
    
    Cooling options:
     --cooling           Enable fan and cooling control
-    --min-fan-speed     Minimum fan speed (default: $config->{min_fan_speed}%)
-    --max-fan-speed     Maximum fan speed (default: $config->{max_fan_speed}%)
-    --bridge-fan-speed  Fan speed to use when bridging (default: $config->{bridge_fan_speed}%)
+    --min-fan-speed     Minimum fan speed (default: $config->{min_fan_speed}[0]%)
+    --max-fan-speed     Maximum fan speed (default: $config->{max_fan_speed}[0]%)
+    --bridge-fan-speed  Fan speed to use when bridging (default: $config->{bridge_fan_speed}[0]%)
     --fan-below-layer-time Enable fan if layer print time is below this approximate number 
-                        of seconds (default: $config->{fan_below_layer_time})
+                        of seconds (default: $config->{fan_below_layer_time}[0])
     --slowdown-below-layer-time Slow down if layer print time is below this approximate number
-                        of seconds (default: $config->{slowdown_below_layer_time})
-    --min-print-speed   Minimum print speed (mm/s, default: $config->{min_print_speed})
-    --disable-fan-first-layers Disable fan for the first N layers (default: $config->{disable_fan_first_layers})
+                        of seconds (default: $config->{slowdown_below_layer_time}[0])
+    --min-print-speed   Minimum print speed (mm/s, default: $config->{min_print_speed}[0])
+    --disable-fan-first-layers Disable fan for the first N layers (default: $config->{disable_fan_first_layers}[0])
     --fan-always-on     Keep fan always on at min fan speed, even for layers that don't need
                         cooling
    
@@ -497,6 +486,13 @@ $j
     --dont-arrange      Don't arrange the objects on the build plate. The model coordinates
                         define the absolute positions on the build plate. 
                         The option --print-center will be ignored.
+    --clip_multipart_objects 
+                        When printing multi-material objects, this settings will make slic3r to clip the overlapping 
+                        object parts one by the other (2nd part will be clipped by the 1st, 3rd part will be clipped 
+                        by the 1st and 2nd etc). (default: $config->{clip_multipart_objects})";
+    --elefant-foot-compensation
+                        Shrink the first layer by the configured value to compensate for the 1st layer squish 
+                        aka an Elefant Foot effect (mm, default: $config->{elefant_foot_compensation})
     --xy-size-compensation
                         Grow/shrink objects by the configured absolute distance (mm, default: $config->{xy_size_compensation})
    
@@ -540,9 +536,11 @@ $j
     --infill-extruder   Extruder to use for infill (1+, default: $config->{infill_extruder})
     --solid-infill-extruder   Extruder to use for solid infill (1+, default: $config->{solid_infill_extruder})
     --support-material-extruder
-                        Extruder to use for support material, raft and skirt (1+, default: $config->{support_material_extruder})
+                        Extruder to use for support material, raft and skirt 
+                        (1+, 0 to use the current extruder to minimize tool changes, default: $config->{support_material_extruder})
     --support-material-interface-extruder
-                        Extruder to use for support material interface (1+, default: $config->{support_material_interface_extruder})
+                        Extruder to use for support material interface 
+                        (1+, 0 to use the current extruder to minimize tool changes, default: $config->{support_material_interface_extruder})
     --ooze-prevention   Drop temperature and park extruders outside a full skirt for automatic wiping
                         (default: no)
     --standby-temperature-delta

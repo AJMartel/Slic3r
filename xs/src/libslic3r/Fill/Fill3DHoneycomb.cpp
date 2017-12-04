@@ -50,12 +50,6 @@ static std::vector<coordf_t> perpendPoints(const coordf_t offset, const size_t b
     return points;
 }
 
-template<typename T>
-static inline T clamp(T low, T high, T x)
-{
-    return std::max<T>(low, std::min<T>(high, x));
-}
-
 // Trims an array of points to specified rectangular limits. Point
 // components that are outside these limits are set to the limits.
 static inline void trim(Pointfs &pts, coordf_t minX, coordf_t minY, coordf_t maxX, coordf_t maxY)
@@ -182,11 +176,7 @@ void Fill3DHoneycomb::_fill_surface_single(
             }
         }
         Polylines chained = PolylineCollection::chained_path_from(
-#if SLIC3R_CPPVER >= 11
             std::move(polylines), 
-#else
-            polylines,
-#endif
             PolylineCollection::leftmost_point(polylines), false); // reverse allowed
         bool first = true;
         for (Polylines::iterator it_polyline = chained.begin(); it_polyline != chained.end(); ++ it_polyline) {
@@ -205,12 +195,7 @@ void Fill3DHoneycomb::_fill_surface_single(
                 }
             }
             // The lines cannot be connected.
-#if SLIC3R_CPPVER >= 11
-            polylines_out.push_back(std::move(*it_polyline));
-#else
-            polylines_out.push_back(Polyline());
-            std::swap(polylines_out.back(), *it_polyline);
-#endif
+            polylines_out.emplace_back(std::move(*it_polyline));
             first = false;
         }
     }

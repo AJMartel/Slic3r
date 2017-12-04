@@ -51,6 +51,8 @@ public:
     std::string wkt() const;
     Points concave_points(double angle = PI) const;
     Points convex_points(double angle = PI) const;
+    // Projection of a point onto the polygon.
+    Point point_projection(const Point &point) const;
 };
 
 extern BoundingBox get_extents(const Polygon &poly);
@@ -58,6 +60,13 @@ extern BoundingBox get_extents(const Polygons &polygons);
 extern BoundingBox get_extents_rotated(const Polygon &poly, double angle);
 extern BoundingBox get_extents_rotated(const Polygons &polygons, double angle);
 extern std::vector<BoundingBox> get_extents_vector(const Polygons &polygons);
+
+inline double total_length(const Polygons &polylines) {
+    double total = 0;
+    for (Polygons::const_iterator it = polylines.begin(); it != polylines.end(); ++it)
+        total += it->length();
+    return total;
+}
 
 // Remove sticks (tentacles with zero area) from the polygon.
 extern bool        remove_sticks(Polygon &poly);
@@ -82,8 +91,27 @@ inline void        polygons_append(Polygons &dst, Polygons &&src)
 
 inline void polygons_rotate(Polygons &polys, double angle)
 {
-    for (Polygons::iterator p = polys.begin(); p != polys.end(); ++p)
-        p->rotate(angle);
+    const double cos_angle = cos(angle);
+    const double sin_angle = sin(angle);
+    for (Polygon &p : polys)
+        p.rotate(cos_angle, sin_angle);
+}
+
+inline Points to_points(const Polygon &poly)
+{
+    return poly.points;
+}
+
+inline Points to_points(const Polygons &polys) 
+{
+    size_t n_points = 0;
+    for (size_t i = 0; i < polys.size(); ++ i)
+        n_points += polys[i].points.size();
+    Points points;
+    points.reserve(n_points);
+    for (const Polygon &poly : polys)
+        append(points, poly.points);
+    return points;
 }
 
 inline Lines to_lines(const Polygon &poly) 
@@ -126,7 +154,6 @@ inline Polylines to_polylines(const Polygons &polys)
     return polylines;
 }
 
-#if SLIC3R_CPPVER >= 11
 inline Polylines to_polylines(Polygons &&polys)
 {
     Polylines polylines;
@@ -140,7 +167,6 @@ inline Polylines to_polylines(Polygons &&polys)
     assert(idx == polylines.size());
     return polylines;
 }
-#endif
 
 } // Slic3r
 
@@ -172,7 +198,7 @@ namespace boost { namespace polygon {
         }
 
         // Get the winding direction of the polygon
-        static inline winding_direction winding(const Slic3r::Polygon& t) {
+        static inline winding_direction winding(const Slic3r::Polygon& /* t */) {
             return unknown_winding;
         }
     };
@@ -213,8 +239,8 @@ namespace boost { namespace polygon {
         }
 
         //don't worry about these, just return false from them
-        static inline bool clean(const Slic3r::Polygons& polygon_set) { return false; }
-        static inline bool sorted(const Slic3r::Polygons& polygon_set) { return false; }
+        static inline bool clean(const Slic3r::Polygons& /* polygon_set */) { return false; }
+        static inline bool sorted(const Slic3r::Polygons& /* polygon_set */) { return false; }
     };
 
     template <>

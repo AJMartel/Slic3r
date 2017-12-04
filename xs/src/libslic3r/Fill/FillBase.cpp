@@ -11,6 +11,7 @@
 #include "FillPlanePath.hpp"
 #include "FillRectilinear.hpp"
 #include "FillRectilinear2.hpp"
+#include "FillRectilinear3.hpp"
 
 namespace Slic3r {
 
@@ -31,21 +32,21 @@ Fill* Fill::new_from_type(const InfillPattern type)
     case ipArchimedeanChords:   return new FillArchimedeanChords();
     case ipHilbertCurve:        return new FillHilbertCurve();
     case ipOctagramSpiral:      return new FillOctagramSpiral();
-    default: CONFESS("unknown type"); return NULL;
+    default: CONFESS("unknown type"); return nullptr;
     }
 }
 
 Fill* Fill::new_from_type(const std::string &type)
 {
-    static t_config_enum_values enum_keys_map = ConfigOptionEnum<InfillPattern>::get_enum_values();
+    const t_config_enum_values &enum_keys_map = ConfigOptionEnum<InfillPattern>::get_enum_values();
     t_config_enum_values::const_iterator it = enum_keys_map.find(type);
-    return (it == enum_keys_map.end()) ? NULL : new_from_type(InfillPattern(it->second));
+    return (it == enum_keys_map.end()) ? nullptr : new_from_type(InfillPattern(it->second));
 }
 
 Polylines Fill::fill_surface(const Surface *surface, const FillParams &params)
 {
     // Perform offset.
-    Slic3r::ExPolygons expp = offset_ex(surface->expolygon, float(-0.5*scale_(this->spacing)));
+    Slic3r::ExPolygons expp = offset_ex(surface->expolygon, float(scale_(this->overlap - 0.5 * this->spacing)));
     // Create the infills for each of the regions.
     Polylines polylines_out;
     for (size_t i = 0; i < expp.size(); ++ i)

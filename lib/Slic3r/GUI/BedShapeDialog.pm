@@ -7,7 +7,7 @@ use warnings;
 use utf8;
 
 use List::Util qw(min max);
-use Slic3r::Geometry qw(PI X Y unscale);
+use Slic3r::Geometry qw(X Y unscale);
 use Wx qw(:dialog :id :misc :sizer :choicebook wxTAB_TRAVERSAL);
 use Wx::Event qw(EVT_CLOSE);
 use base 'Wx::Dialog';
@@ -45,7 +45,7 @@ package Slic3r::GUI::BedShapePanel;
 
 use List::Util qw(min max sum first);
 use Scalar::Util qw(looks_like_number);
-use Slic3r::Geometry qw(PI X Y scale unscale scaled_epsilon deg2rad);
+use Slic3r::Geometry qw(PI X Y unscale scaled_epsilon);
 use Wx qw(:font :id :misc :sizer :choicebook :filedialog :pen :brush wxTAB_TRAVERSAL);
 use Wx::Event qw(EVT_CLOSE EVT_CHOICEBOOK_PAGE_CHANGED EVT_BUTTON);
 use base 'Wx::Panel';
@@ -212,8 +212,9 @@ sub _update_shape {
         my $rect_origin = $self->{optgroups}[SHAPE_RECTANGULAR]->get_value('rect_origin');
         my ($x, $y) = @$rect_size;
         return if !looks_like_number($x) || !looks_like_number($y);  # empty strings or '-' or other things
+        return if !$x || !$y or $x == 0 or $y == 0;
         my ($x0, $y0) = (0,0);
-        my ($x1, $y1) = ($x,$y);
+        my ($x1, $y1) = ($x ,$y);
         {
             my ($dx, $dy) = @$rect_origin;
             return if !looks_like_number($dx) || !looks_like_number($dy);  # empty strings or '-' or other things
@@ -230,7 +231,7 @@ sub _update_shape {
         ]);
     } elsif ($page_idx == SHAPE_CIRCULAR) {
         my $diameter = $self->{optgroups}[SHAPE_CIRCULAR]->get_value('diameter');
-        return if !$diameter;
+        return if !$diameter or $diameter == 0;
         my $r = $diameter/2;
         my $twopi = 2*PI;
         my $edges = 60;
@@ -280,16 +281,16 @@ sub _init_shape_options_page {
 sub _load_stl {
     my ($self) = @_;
     
-    my $dialog = Wx::FileDialog->new($self, 'Choose a file to import bed shape from (STL/OBJ/AMF):', "", "", &Slic3r::GUI::MODEL_WILDCARD, wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    my $dialog = Wx::FileDialog->new($self, 'Choose a file to import bed shape from (STL/OBJ/AMF/PRUSA):', "", "", &Slic3r::GUI::MODEL_WILDCARD, wxFD_OPEN | wxFD_FILE_MUST_EXIST);
     if ($dialog->ShowModal != wxID_OK) {
         $dialog->Destroy;
         return;
     }
-    my $input_file = Slic3r::decode_path($dialog->GetPaths);
+    my $input_file = $dialog->GetPaths;
     $dialog->Destroy;
     
     my $model = Slic3r::Model->read_from_file($input_file);
-    my $mesh = $model->raw_mesh;
+    my $mesh = $model->mesh;
     my $expolygons = $mesh->horizontal_projection;
 
     if (@$expolygons == 0) {

@@ -3,7 +3,8 @@
 #include <float.h>
 #include <unordered_map>
 
-#ifdef SLIC3R_GUI
+#if 0
+// #ifdef SLIC3R_GUI
 #include <wx/image.h>
 #endif /* SLIC3R_GUI */
 
@@ -1353,7 +1354,7 @@ Polygons EdgeGrid::Grid::contours_simplified(coord_t offset) const
 	return out;
 }
 
-#ifdef SLIC3R_GUI
+#if 0
 void EdgeGrid::save_png(const EdgeGrid::Grid &grid, const BoundingBox &bbox, coord_t resolution, const char *path)
 {
 	unsigned int w = (bbox.max.x - bbox.min.x + resolution - 1) / resolution;

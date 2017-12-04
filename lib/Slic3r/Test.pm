@@ -1,6 +1,7 @@
 package Slic3r::Test;
 use strict;
 use warnings;
+use Cwd 'abs_path';
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -21,6 +22,14 @@ sub mesh {
     my ($vertices, $facets);
     if ($cuboids{$name}) {
         my ($x, $y, $z) = @{ $cuboids{$name} };
+        $vertices = [
+            [$x,$y,0], [$x,0,0], [0,0,0], [0,$y,0], [$x,$y,$z], [0,$y,$z], [0,0,$z], [$x,0,$z],
+        ];
+        $facets = [
+            [0,1,2], [0,2,3], [4,5,6], [4,6,7], [0,4,7], [0,7,1], [1,7,6], [1,6,2], [2,6,5], [2,5,3], [4,0,3], [4,3,5],
+        ],
+    } elsif ($name eq 'box') {
+        my ($x, $y, $z) = @{ $params{"dim"} };
         $vertices = [
             [$x,$y,0], [$x,0,0], [0,0,0], [0,$y,0], [$x,$y,$z], [0,$y,$z], [0,0,$z], [$x,0,$z],
         ];
@@ -180,6 +189,8 @@ sub init_print {
             $print->add_model_object($model_object);
         }
     }
+    # Call apply_config one more time, so that the layer height profiles are updated over all PrintObjects.
+    $print->apply_config($config);
     $print->validate;
     
     # We return a proxy object in order to keep $models alive as required by the Print API.
@@ -194,10 +205,21 @@ sub gcode {
     
     $print = $print->print if $print->isa('Slic3r::Test::Print');
     
-    my $fh = IO::Scalar->new(\my $gcode);
+    # Write the resulting G-code into a temporary file.
+    my $gcode_temp_path = abs_path($0) . '.gcode.temp';
+    # Remove the existing temp file.
+    unlink $gcode_temp_path;
     $print->process;
-    $print->export_gcode(output_fh => $fh, quiet => 1);
-    $fh->close;
+    $print->export_gcode(output_file => $gcode_temp_path, quiet => 1);
+    # Read the temoprary G-code file.
+    my $gcode;
+    {
+        local $/;
+        open my $fh, '<', $gcode_temp_path or die "Test.pm: can't open $gcode_temp_path: $!";
+        $gcode = <$fh>;
+    }
+    # Remove the temp file.
+    unlink $gcode_temp_path;
     
     return $gcode;
 }

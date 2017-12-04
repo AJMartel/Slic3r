@@ -5,11 +5,12 @@ use warnings;
 BEGIN {
     use FindBin;
     use lib "$FindBin::Bin/../lib";
+    use local::lib "$FindBin::Bin/../local-lib";
 }
 
 use List::Util qw(first sum);
 use Slic3r;
-use Slic3r::Geometry qw(scale epsilon deg2rad rad2deg PI);
+use Slic3r::Geometry qw(scale epsilon deg2rad rad2deg);
 use Slic3r::Test;
 
 {
@@ -108,7 +109,7 @@ sub check_angle {
 }
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('top_solid_layers', 0);            # to prevent bridging on sparse infill
     $config->set('bridge_speed', 99);
     

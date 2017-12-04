@@ -5,96 +5,26 @@
 #include "Fill/Fill.hpp"
 #include "SVG.hpp"
 
-namespace Slic3r {
+#include <boost/log/trivial.hpp>
 
-Layer::Layer(size_t id, PrintObject *object, coordf_t height, coordf_t print_z,
-        coordf_t slice_z)
-:   upper_layer(NULL),
-    lower_layer(NULL),
-    regions(),
-    slicing_errors(false),
-    slice_z(slice_z),
-    print_z(print_z),
-    height(height),
-    slices(),
-    _id(id),
-    _object(object)
-{
-}
+namespace Slic3r {
 
 Layer::~Layer()
 {
-    // remove references to self
-    if (NULL != this->upper_layer) {
-        this->upper_layer->lower_layer = NULL;
-    }
-
-    if (NULL != this->lower_layer) {
-        this->lower_layer->upper_layer = NULL;
-    }
-
-    this->clear_regions();
-}
-
-size_t
-Layer::id() const
-{
-    return this->_id;
-}
-
-void
-Layer::set_id(size_t id)
-{
-    this->_id = id;
-}
-
-PrintObject*
-Layer::object()
-{
-    return this->_object;
-}
-
-const PrintObject*
-Layer::object() const
-{
-    return this->_object;
-}
-
-
-size_t
-Layer::region_count() const
-{
-    return this->regions.size();
-}
-
-void
-Layer::clear_regions()
-{
-    for (size_t i = 0; i < this->regions.size(); ++ i)
-        delete this->regions[i];
+    this->lower_layer = this->upper_layer = nullptr;
+    for (LayerRegion *region : this->regions)
+        delete region;
     this->regions.clear();
 }
 
-LayerRegion*
-Layer::add_region(PrintRegion* print_region)
+LayerRegion* Layer::add_region(PrintRegion* print_region)
 {
-    LayerRegion* region = new LayerRegion(this, print_region);
-    this->regions.push_back(region);
-    return region;
-}
-
-void
-Layer::delete_region(int idx)
-{
-    LayerRegionPtrs::iterator i = this->regions.begin() + idx;
-    LayerRegion* item = *i;
-    this->regions.erase(i);
-    delete item;
+    this->regions.emplace_back(new LayerRegion(this, print_region));
+    return this->regions.back();
 }
 
 // merge all regions' slices to get islands
-void
-Layer::make_slices()
+void Layer::make_slices()
 {
     ExPolygons slices;
     if (this->regions.size() == 1) {
@@ -114,20 +44,19 @@ Layer::make_slices()
     // prepare ordering points
     Points ordering_points;
     ordering_points.reserve(slices.size());
-    for (ExPolygons::const_iterator ex = slices.begin(); ex != slices.end(); ++ex)
-        ordering_points.push_back(ex->contour.first_point());
+    for (const ExPolygon &ex : slices)
+        ordering_points.push_back(ex.contour.first_point());
     
     // sort slices
     std::vector<Points::size_type> order;
     Slic3r::Geometry::chained_path(ordering_points, order);
     
     // populate slices vector
-    for (std::vector<Points::size_type>::const_iterator it = order.begin(); it != order.end(); ++it)
-        this->slices.expolygons.push_back(STDMOVE(slices[*it]));
+    for (size_t i : order)
+        this->slices.expolygons.push_back(STDMOVE(slices[i]));
 }
 
-void
-Layer::merge_slices()
+void Layer::merge_slices()
 {
     if (this->regions.size() == 1) {
         // Optimization, also more robust. Don't merge classified pieces of layerm->slices,
@@ -141,38 +70,12 @@ Layer::merge_slices()
     }
 }
 
-template <class T>
-bool
-Layer::any_internal_region_slice_contains(const T &item) const
-{
-    FOREACH_LAYERREGION(this, layerm) {
-        if ((*layerm)->slices.any_internal_contains(item)) return true;
-    }
-    return false;
-}
-template bool Layer::any_internal_region_slice_contains<Polyline>(const Polyline &item) const;
-
-template <class T>
-bool
-Layer::any_bottom_region_slice_contains(const T &item) const
-{
-    FOREACH_LAYERREGION(this, layerm) {
-        if ((*layerm)->slices.any_bottom_contains(item)) return true;
-    }
-    return false;
-}
-template bool Layer::any_bottom_region_slice_contains<Polyline>(const Polyline &item) const;
-
-
 // Here the perimeters are created cummulatively for all layer regions sharing the same parameters influencing the perimeters.
 // The perimeter paths and the thin fills (ExtrusionEntityCollection) are assigned to the first compatible layer region.
 // The resulting fill surface is split back among the originating regions.
-void
-Layer::make_perimeters()
+void Layer::make_perimeters()
 {
-    #ifdef SLIC3R_DEBUG
-    printf("Making perimeters for layer " PRINTF_ZU "\n", this->id());
-    #endif
+    BOOST_LOG_TRIVIAL(trace) << "Generating perimeters for layer " << this->id();
     
     // keep track of regions whose perimeters we have already generated
     std::set<size_t> done;
@@ -180,6 +83,7 @@ Layer::make_perimeters()
     FOREACH_LAYERREGION(this, layerm) {
         size_t region_id = layerm - this->regions.begin();
         if (done.find(region_id) != done.end()) continue;
+        BOOST_LOG_TRIVIAL(trace) << "Generating perimeters for layer " << this->id() << ", region " << region_id;
         done.insert(region_id);
         const PrintRegionConfig &config = (*layerm)->region()->config;
         
@@ -193,6 +97,7 @@ Layer::make_perimeters()
             if (config.perimeter_extruder   == other_config.perimeter_extruder
                 && config.perimeters        == other_config.perimeters
                 && config.perimeter_speed   == other_config.perimeter_speed
+                && config.external_perimeter_speed == other_config.external_perimeter_speed
                 && config.gap_fill_speed    == other_config.gap_fill_speed
                 && config.overhangs         == other_config.overhangs
                 && config.serialize("perimeter_extrusion_width").compare(other_config.serialize("perimeter_extrusion_width")) == 0
@@ -237,6 +142,7 @@ Layer::make_perimeters()
             }
         }
     }
+    BOOST_LOG_TRIVIAL(trace) << "Generating perimeters for layer " << this->id() << " - Done";
 }
 
 void Layer::make_fills()
@@ -255,7 +161,7 @@ void Layer::make_fills()
     }
 }
 
-void Layer::export_region_slices_to_svg(const char *path)
+void Layer::export_region_slices_to_svg(const char *path) const
 {
     BoundingBox bbox;
     for (LayerRegionPtrs::const_iterator region = this->regions.begin(); region != this->regions.end(); ++region)
@@ -275,13 +181,13 @@ void Layer::export_region_slices_to_svg(const char *path)
 }
 
 // Export to "out/LayerRegion-name-%d.svg" with an increasing index with every export.
-void Layer::export_region_slices_to_svg_debug(const char *name)
+void Layer::export_region_slices_to_svg_debug(const char *name) const
 {
     static size_t idx = 0;
     this->export_region_slices_to_svg(debug_out_path("Layer-slices-%s-%d.svg", name, idx ++).c_str());
 }
 
-void Layer::export_region_fill_surfaces_to_svg(const char *path)
+void Layer::export_region_fill_surfaces_to_svg(const char *path) const
 {
     BoundingBox bbox;
     for (LayerRegionPtrs::const_iterator region = this->regions.begin(); region != this->regions.end(); ++region)
@@ -301,16 +207,10 @@ void Layer::export_region_fill_surfaces_to_svg(const char *path)
 }
 
 // Export to "out/LayerRegion-name-%d.svg" with an increasing index with every export.
-void Layer::export_region_fill_surfaces_to_svg_debug(const char *name)
+void Layer::export_region_fill_surfaces_to_svg_debug(const char *name) const
 {
     static size_t idx = 0;
     this->export_region_fill_surfaces_to_svg(debug_out_path("Layer-fill_surfaces-%s-%d.svg", name, idx ++).c_str());
-}
-
-SupportLayer::SupportLayer(size_t id, PrintObject *object, coordf_t height,
-        coordf_t print_z, coordf_t slice_z)
-:   Layer(id, object, height, print_z, slice_z)
-{
 }
 
 }

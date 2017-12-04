@@ -5,15 +5,16 @@ use warnings;
 BEGIN {
     use FindBin;
     use lib "$FindBin::Bin/../lib";
+    use local::lib "$FindBin::Bin/../local-lib";
 }
 
 use List::Util qw(first);
 use Slic3r;
-use Slic3r::Geometry qw(epsilon unscale X Y);
+use Slic3r::Geometry qw(unscale X Y);
 use Slic3r::Test;
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     my $print_center = [100,100];
     my $print = Slic3r::Test::init_print('20mm_cube', config => $config, print_center => $print_center);
     my @extrusion_points = ();
@@ -26,13 +27,13 @@ use Slic3r::Test;
     });
     my $bb = Slic3r::Geometry::BoundingBox->new_from_points(\@extrusion_points);
     my $center = $bb->center;
-    ok abs(unscale($center->[X]) - $print_center->[X]) < epsilon, 'print is centered around print_center (X)';
-    ok abs(unscale($center->[Y]) - $print_center->[Y]) < epsilon, 'print is centered around print_center (Y)';
+    ok abs(unscale($center->[X]) - $print_center->[X]) < 0.005, 'print is centered around print_center (X)';
+    ok abs(unscale($center->[Y]) - $print_center->[Y]) < 0.005, 'print is centered around print_center (Y)';
 }
 
 {
     # this represents the aggregate config from presets
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     
     # user adds one object to the plater
     my $print = Slic3r::Test::init_print(my $model = Slic3r::Test::model('20mm_cube'), config => $config);

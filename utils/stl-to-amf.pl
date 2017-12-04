@@ -7,6 +7,7 @@ use warnings;
 BEGIN {
     use FindBin;
     use lib "$FindBin::Bin/../lib";
+    use local::lib "$FindBin::Bin/../local-lib";
 }
 
 use File::Basename qw(basename);
@@ -25,9 +26,9 @@ my %opt = ();
 }
 
 {
-    my @models = map Slic3r::Format::STL->read_file($_), @ARGV;
+    my @models = map Slic3r::Model->load_stl($_, basename($_)), @ARGV;
     my $output_file = $ARGV[0];
-    $output_file =~ s/\.stl$/.amf.xml/i;
+    $output_file =~ s/\.[sS][tT][lL]$/.amf.xml/;
     
     my $new_model = Slic3r::Model->new;
     
@@ -53,7 +54,7 @@ my %opt = ();
     }
     
     printf "Writing to %s\n", basename($output_file);
-    Slic3r::Format::AMF->write_file($output_file, $new_model);
+    $new_model->store_amf($output_file);
 }
 
 

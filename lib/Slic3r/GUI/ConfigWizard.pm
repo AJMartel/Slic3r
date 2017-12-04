@@ -8,7 +8,6 @@ use utf8;
 
 use Wx;
 use base 'Wx::Wizard';
-use Slic3r::Geometry qw(unscale);
 
 # adhere to various human interface guidelines
 our $wizard = 'Wizard';
@@ -66,7 +65,7 @@ sub run {
             
             # set first_layer_bed_temperature to temperature + 5
             $self->{config}->set('first_layer_bed_temperature',
-                ($self->{config}->bed_temperature > 0) ? ($self->{config}->bed_temperature + 5) : 0);
+                [ ($self->{config}->bed_temperature->[0] > 0) ? ($self->{config}->bed_temperature->[0] + 5) : 0 ]);
         }
         
         $self->Destroy;
@@ -90,11 +89,11 @@ sub new {
     push @{$self->{titles}}, $title;
     $self->{own_index} = 0;
 
-    $self->{bullets}->{before} = Wx::Bitmap->new($Slic3r::var->("bullet_black.png"), wxBITMAP_TYPE_PNG);
-    $self->{bullets}->{own}    = Wx::Bitmap->new($Slic3r::var->("bullet_blue.png"),  wxBITMAP_TYPE_PNG);
-    $self->{bullets}->{after}  = Wx::Bitmap->new($Slic3r::var->("bullet_white.png"), wxBITMAP_TYPE_PNG);
+    $self->{bullets}->{before} = Wx::Bitmap->new(Slic3r::var("bullet_black.png"), wxBITMAP_TYPE_PNG);
+    $self->{bullets}->{own}    = Wx::Bitmap->new(Slic3r::var("bullet_blue.png"),  wxBITMAP_TYPE_PNG);
+    $self->{bullets}->{after}  = Wx::Bitmap->new(Slic3r::var("bullet_white.png"), wxBITMAP_TYPE_PNG);
 
-    $self->{background} = Wx::Bitmap->new($Slic3r::var->("Slic3r_192px_transparent.png"), wxBITMAP_TYPE_PNG);
+    $self->{background} = Wx::Bitmap->new(Slic3r::var("Slic3r_192px_transparent.png"), wxBITMAP_TYPE_PNG);
     $self->SetMinSize(Wx::Size->new($self->{background}->GetWidth, $self->{background}->GetHeight));
 
     EVT_PAINT($self, \&repaint);
@@ -203,7 +202,7 @@ sub append_option {
     
     # populate repository with the factory default
     my ($opt_key, $opt_index) = split /#/, $full_key, 2;
-    $self->config->apply(Slic3r::Config->new_from_defaults($opt_key));
+    $self->config->apply(Slic3r::Config::new_from_defaults_keys([$opt_key]));
     
     # draw the control
     my $optgroup = Slic3r::GUI::ConfigOptionsGroup->new(
@@ -301,7 +300,7 @@ sub new {
 
     $self->append_text('Set the shape of your printer\'s bed, then click Next.');
     
-    $self->config->apply(Slic3r::Config->new_from_defaults('bed_shape'));
+    $self->config->apply(Slic3r::Config::new_from_defaults_keys(['bed_shape']));
     $self->{bed_shape_panel} = my $panel = Slic3r::GUI::BedShapePanel->new($self, $self->config->bed_shape);
     $self->{bed_shape_panel}->on_change(sub {
         $self->config->set('bed_shape', $self->{bed_shape_panel}->GetValue);
@@ -364,7 +363,7 @@ sub new {
 
     $self->append_text('Enter the bed temperature needed for getting your filament to stick to your heated bed, then click Next.');
     $self->append_text('A rule of thumb is 60 °C for PLA and 110 °C for ABS. Leave zero if you have no heated bed.');
-    $self->append_option('bed_temperature');
+    $self->append_option('bed_temperature#0');
     
     return $self;
 }

@@ -12,12 +12,16 @@ __PACKAGE__->mk_accessors(qw(print enabled _loaded canvas slider_low slider_high
 
 sub new {
     my $class = shift;
-    my ($parent, $print) = @_;
+    my ($parent, $print, $config) = @_;
     
     my $self = $class->SUPER::new($parent, -1, wxDefaultPosition);
-    
+    $self->{config} = $config;
+    $self->{number_extruders} = 1;
+    $self->{preferred_color_mode} = 'feature';
+
     # init GUI elements
     my $canvas = Slic3r::GUI::3DScene->new($self);
+    $canvas->use_plain_shader(1);
     $self->canvas($canvas);
     my $slider_low = Wx::Slider->new(
         $self, -1,
@@ -52,7 +56,9 @@ sub new {
     $z_label_high->SetFont($Slic3r::GUI::small_font);
 
     $self->single_layer(0);
+    $self->{color_by_extruder} = 0;
     my $checkbox_singlelayer = $self->{checkbox_singlelayer} = Wx::CheckBox->new($self, -1, "1 Layer");
+    my $checkbox_color_by_extruder = $self->{checkbox_color_by_extruder} = Wx::CheckBox->new($self, -1, "Tool");
     
     my $hsizer = Wx::BoxSizer->new(wxHORIZONTAL);
     my $vsizer = Wx::BoxSizer->new(wxVERTICAL);
@@ -66,6 +72,7 @@ sub new {
     $hsizer->Add($vsizer, 0, wxEXPAND, 0);
     $vsizer_outer->Add($hsizer, 3, wxALIGN_CENTER_HORIZONTAL, 0);
     $vsizer_outer->Add($checkbox_singlelayer, 0, wxTOP | wxALIGN_CENTER_HORIZONTAL, 5);
+    $vsizer_outer->Add($checkbox_color_by_extruder, 0, wxTOP | wxALIGN_CENTER_HORIZONTAL, 5);
 
     my $sizer = Wx::BoxSizer->new(wxHORIZONTAL);
     $sizer->Add($canvas, 1, wxALL | wxEXPAND, 0);
@@ -82,20 +89,54 @@ sub new {
     EVT_KEY_DOWN($canvas, sub {
         my ($s, $event) = @_;
         my $key = $event->GetKeyCode;
-        if ($key == ord('U') || $key == WXK_RIGHT) {
-            $slider_high->SetValue($slider_high->GetValue + 1);
-            $slider_low->SetValue($slider_high->GetValue) if ($event->ShiftDown());
-            $self->set_z_idx_high($slider_high->GetValue);
-        } elsif ($key == ord('D') || $key == WXK_LEFT) {
-            $slider_high->SetValue($slider_high->GetValue - 1);
-            $slider_low->SetValue($slider_high->GetValue) if ($event->ShiftDown());
-            $self->set_z_idx_high($slider_high->GetValue);
-        } elsif ($key == ord('S')) {
-            $checkbox_singlelayer->SetValue(! $checkbox_singlelayer->GetValue());
-            $self->single_layer($checkbox_singlelayer->GetValue());
-            if ($self->single_layer) {
-                $slider_low->SetValue($slider_high->GetValue);
+        if ($event->HasModifiers) {
+            $event->Skip;
+        } else {
+            if ($key == ord('U')) {
+                $slider_high->SetValue($slider_high->GetValue + 1);
+                $slider_low->SetValue($slider_high->GetValue) if ($event->ShiftDown());
                 $self->set_z_idx_high($slider_high->GetValue);
+            } elsif ($key == ord('D')) {
+                $slider_high->SetValue($slider_high->GetValue - 1);
+                $slider_low->SetValue($slider_high->GetValue) if ($event->ShiftDown());
+                $self->set_z_idx_high($slider_high->GetValue);
+            } elsif ($key == ord('S')) {
+                $checkbox_singlelayer->SetValue(! $checkbox_singlelayer->GetValue());
+                $self->single_layer($checkbox_singlelayer->GetValue());
+                if ($self->single_layer) {
+                    $slider_low->SetValue($slider_high->GetValue);
+                    $self->set_z_idx_high($slider_high->GetValue);
+                }
+            } else {
+                $event->Skip;
+            }
+        }
+    });
+    EVT_KEY_DOWN($slider_low, sub {
+        my ($s, $event) = @_;
+        my $key = $event->GetKeyCode;
+        if ($event->HasModifiers) {
+            $event->Skip;
+        } else {
+            if ($key == WXK_LEFT) {
+            } elsif ($key == WXK_RIGHT) {
+                $slider_high->SetFocus;
+            } else {
+                $event->Skip;
+            }
+        }
+    });
+    EVT_KEY_DOWN($slider_high, sub {
+        my ($s, $event) = @_;
+        my $key = $event->GetKeyCode;
+        if ($event->HasModifiers) {
+            $event->Skip;
+        } else {
+            if ($key == WXK_LEFT) {
+                $slider_low->SetFocus;
+            } elsif ($key == WXK_RIGHT) {
+            } else {
+                $event->Skip;
             }
         }
     });
@@ -105,6 +146,11 @@ sub new {
             $slider_low->SetValue($slider_high->GetValue);
             $self->set_z_idx_high($slider_high->GetValue);
         }
+    });
+    EVT_CHECKBOX($self, $checkbox_color_by_extruder, sub {
+        $self->{color_by_extruder} = $checkbox_color_by_extruder->GetValue();
+        $self->{preferred_color_mode} = $self->{color_by_extruder} ? 'tool' : 'feature';
+        $self->reload_print;
     });
     
     $self->SetSizer($sizer);
@@ -119,10 +165,16 @@ sub new {
 }
 
 sub reload_print {
-    my ($self) = @_;
+    my ($self, $force) = @_;
     
     $self->canvas->reset_objects;
     $self->_loaded(0);
+
+    if (! $self->IsShown && ! $force) {
+        $self->{reload_delayed} = 1;
+        return;
+    }
+
     $self->load_print;
 }
 
@@ -179,13 +231,39 @@ sub load_print {
     $self->slider_low->Show;
     $self->slider_high->Show;
     $self->Layout;
-    
+
+    my $by_tool = $self->{color_by_extruder};
+    if ($self->{preferred_color_mode} eq 'tool_or_feature') {
+        # It is left to Slic3r to decide whether the print shall be colored by the tool or by the feature.
+        # Color by feature if it is a single extruder print.
+        my $extruders = $self->{print}->extruders;
+        $by_tool = scalar(@{$extruders}) > 1;
+        $self->{color_by_extruder} = $by_tool;
+        $self->{checkbox_color_by_extruder}->SetValue($by_tool);
+        $self->{preferred_color_mode} = 'tool_or_feature';
+    }
+
+    # Collect colors per extruder.
+    # Leave it empty, if the print should be colored by a feature.
+    my @colors = ();
+    if ($by_tool) {
+        my @extruder_colors = @{$self->{config}->extruder_colour};
+        my @filament_colors = @{$self->{config}->filament_colour};
+        for (my $i = 0; $i <= $#extruder_colors; $i += 1) {
+            my $color = $extruder_colors[$i];
+            $color = $filament_colors[$i] if (! defined($color) || $color !~ m/^#[[:xdigit:]]{6}/);
+            $color = '#FFFFFF' if (! defined($color) || $color !~ m/^#[[:xdigit:]]{6}/);
+            push @colors, $color;
+        }
+    }
+
     if ($self->IsShown) {
         # load skirt and brim
-        $self->canvas->load_print_toolpaths($self->print);
+        $self->canvas->load_print_toolpaths($self->print, \@colors);
+        $self->canvas->load_wipe_tower_toolpaths($self->print, \@colors);
         
         foreach my $object (@{$self->print->objects}) {
-            $self->canvas->load_print_object_toolpaths($object);
+            $self->canvas->load_print_object_toolpaths($object, \@colors);
             
             # Show the objects in very transparent color.
             #my @volume_ids = $self->canvas->load_object($object->model_object);
@@ -238,6 +316,23 @@ sub set_z_idx_high
 sub set_bed_shape {
     my ($self, $bed_shape) = @_;
     $self->canvas->set_bed_shape($bed_shape);
+}
+
+sub set_number_extruders {
+    my ($self, $number_extruders) = @_;
+    if ($self->{number_extruders} != $number_extruders) {
+        $self->{number_extruders} = $number_extruders;
+        my $by_tool = $number_extruders > 1;
+        $self->{color_by_extruder} = $by_tool;
+        $self->{checkbox_color_by_extruder}->SetValue($by_tool);
+        $self->{preferred_color_mode} = $by_tool ? 'tool_or_feature' : 'feature';
+    }
+}
+
+# Called by the Platter wxNotebook when this page is activated.
+sub OnActivate {
+    my ($self) = @_;
+    $self->reload_print(1) if ($self->{reload_delayed});
 }
 
 1;

@@ -37,6 +37,7 @@
         %code{% RETVAL = THIS->bounding_box().center(); %};
     int facets_count();
     void reset_repair_stats();
+
 %{
 
 void
@@ -221,6 +222,28 @@ TriangleMesh::bb3()
         RETVAL.push_back(THIS->stl.stats.max.y);
         RETVAL.push_back(THIS->stl.stats.min.z);
         RETVAL.push_back(THIS->stl.stats.max.z);
+    OUTPUT:
+        RETVAL
+
+
+Clone<TriangleMesh>
+cube(double x, double y, double z) 
+    CODE:
+        RETVAL = make_cube(x,y,z);
+    OUTPUT:
+        RETVAL
+
+Clone<TriangleMesh> 
+cylinder(double r, double h) 
+    CODE:
+        RETVAL = make_cylinder(r, h);
+    OUTPUT:
+        RETVAL
+
+Clone<TriangleMesh>
+sphere(double rho)
+    CODE:
+        RETVAL = make_sphere(rho);
     OUTPUT:
         RETVAL
 

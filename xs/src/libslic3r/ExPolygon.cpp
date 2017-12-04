@@ -198,7 +198,7 @@ ExPolygon::simplify_p(double tolerance) const
         p.points.pop_back();
         pp.push_back(p);
     }
-    simplify_polygons(pp, &pp);
+    pp = simplify_polygons(pp);
     return pp;
 }
 
@@ -553,9 +553,9 @@ BoundingBox get_extents(const ExPolygons &expolygons)
 {
     BoundingBox bbox;
     if (! expolygons.empty()) {
-        bbox = get_extents(expolygons.front());
-        for (size_t i = 1; i < expolygons.size(); ++ i)
-            bbox.merge(get_extents(expolygons[i]));
+        for (size_t i = 0; i < expolygons.size(); ++ i)
+			if (! expolygons[i].contour.points.empty())
+				bbox.merge(get_extents(expolygons[i]));
     }
     return bbox;
 }

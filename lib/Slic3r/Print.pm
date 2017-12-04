@@ -10,9 +10,9 @@ use List::Util qw(min max first sum);
 use Slic3r::ExtrusionLoop ':roles';
 use Slic3r::ExtrusionPath ':roles';
 use Slic3r::Flow ':roles';
-use Slic3r::Geometry qw(X Y Z X1 Y1 X2 Y2 MIN MAX PI scale unscale convex_hull);
+use Slic3r::Geometry qw(X Y unscale);
 use Slic3r::Geometry::Clipper qw(diff_ex union_ex intersection_ex intersection offset
-    offset2 union union_pt_chained JT_ROUND JT_SQUARE);
+    union JT_ROUND JT_SQUARE);
 use Slic3r::Print::State ':steps';
 
 our $status_cb;
@@ -26,22 +26,16 @@ sub status_cb {
     return $status_cb // sub {};
 }
 
-# this value is not supposed to be compared with $layer->id
-# since they have different semantics
-sub total_layer_count {
-    my $self = shift;
-    return max(map $_->total_layer_count, @{$self->objects});
-}
-
 sub size {
     my $self = shift;
     return $self->bounding_box->size;
 }
 
+# Slicing process, running at a background thread.
 sub process {
     my ($self) = @_;
     
-    $self->status_cb->(20, "Generating perimeters");
+    Slic3r::trace(3, "Staring the slicing process.");
     $_->make_perimeters for @{$self->objects};
     
     $self->status_cb->(70, "Infilling layers");
@@ -50,6 +44,7 @@ sub process {
     $_->generate_support_material for @{$self->objects};
     $self->make_skirt;
     $self->make_brim;  # must come after make_skirt
+    $self->make_wipe_tower;
     
     # time to make some statistics
     if (0) {
@@ -66,8 +61,10 @@ sub process {
         eval "use Slic3r::Test::SectionCut";
         Slic3r::Test::SectionCut->new(print => $self)->export_svg("section_cut.svg");
     }
+    Slic3r::trace(3, "Slicing process finished.")
 }
 
+# G-code export process, running at a background thread.
 sub export_gcode {
     my $self = shift;
     my %params = @_;
@@ -76,9 +73,11 @@ sub export_gcode {
     $self->process;
     
     # output everything to a G-code file
-    my $output_file = $self->expanded_output_filepath($params{output_file});
+    my $output_file = $self->output_filepath($params{output_file} // '');
     $self->status_cb->(90, "Exporting G-code" . ($output_file ? " to $output_file" : ""));
-    $self->write_gcode($params{output_fh} || $output_file);
+
+    die "G-code export to " . $output_file . " failed\n" 
+        if ! Slic3r::GCode->new->do_export($self, $output_file);
     
     # run post-processing scripts
     if (@{$self->config->post_process}) {
@@ -90,7 +89,11 @@ sub export_gcode {
             if (($^O eq 'MSWin32') ? !(-e $script) : !(-x $script)) {
                 die "The configured post-processing script is not executable: check permissions. ($script)\n";
             }
-            system($script, $output_file);
+            if ($^O eq 'MSWin32' && $script =~ /\.[pP][lL]/) {
+                system($^X, $script, $output_file);
+            } else {
+                system($script, $output_file);
+            }
         }
     }
 }
@@ -104,8 +107,8 @@ sub export_svg {
     
     my $fh = $params{output_fh};
     if (!$fh) {
-        my $output_file = $self->expanded_output_filepath($params{output_file});
-        $output_file =~ s/\.gcode$/.svg/i;
+        my $output_file = $self->output_filepath($params{output_file});
+        $output_file =~ s/\.[gG][cC][oO][dD][eE]$/.svg/;
         Slic3r::open(\$fh, ">", $output_file) or die "Failed to open $output_file for writing\n";
         print "Exporting to $output_file..." unless $params{quiet};
     }
@@ -198,122 +201,13 @@ sub make_skirt {
     $_->generate_support_material for @{$self->objects};
     
     return if $self->step_done(STEP_SKIRT);
+
     $self->set_step_started(STEP_SKIRT);
-    
-    # since this method must be idempotent, we clear skirt paths *before*
-    # checking whether we need to generate them
-    $self->skirt->clear;
-    
-    if (!$self->has_skirt) {
-        $self->set_step_done(STEP_SKIRT);
-        return;
+    $self->skirt->clear;    
+    if ($self->has_skirt) {
+        $self->status_cb->(88, "Generating skirt");
+        $self->_make_skirt();
     }
-    $self->status_cb->(88, "Generating skirt");
-    
-    # First off we need to decide how tall the skirt must be.
-    # The skirt_height option from config is expressed in layers, but our
-    # object might have different layer heights, so we need to find the print_z
-    # of the highest layer involved.
-    # Note that unless has_infinite_skirt() == true
-    # the actual skirt might not reach this $skirt_height_z value since the print
-    # order of objects on each layer is not guaranteed and will not generally
-    # include the thickest object first. It is just guaranteed that a skirt is
-    # prepended to the first 'n' layers (with 'n' = skirt_height).
-    # $skirt_height_z in this case is the highest possible skirt height for safety.
-    my $skirt_height_z = -1;
-    foreach my $object (@{$self->objects}) {
-        my $skirt_height = $self->has_infinite_skirt
-            ? $object->layer_count
-            : min($self->config->skirt_height, $object->layer_count);
-        my $highest_layer = $object->get_layer($skirt_height - 1);
-        $skirt_height_z = max($skirt_height_z, $highest_layer->print_z);
-    }
-    
-    # collect points from all layers contained in skirt height
-    my @points = ();
-    foreach my $object (@{$self->objects}) {
-        my @object_points = ();
-        
-        # get object layers up to $skirt_height_z
-        foreach my $layer (@{$object->layers}) {
-            last if $layer->print_z > $skirt_height_z;
-            push @object_points, map @$_, map @$_, @{$layer->slices};
-        }
-        
-        # get support layers up to $skirt_height_z
-        foreach my $layer (@{$object->support_layers}) {
-            last if $layer->print_z > $skirt_height_z;
-            push @object_points, map @{$_->polyline}, @{$layer->support_fills} if $layer->support_fills;
-            push @object_points, map @{$_->polyline}, @{$layer->support_interface_fills} if $layer->support_interface_fills;
-        }
-        
-        # repeat points for each object copy
-        foreach my $copy (@{$object->_shifted_copies}) {
-            my @copy_points = map $_->clone, @object_points;
-            $_->translate(@$copy) for @copy_points;
-            push @points, @copy_points;
-        }
-    }
-    return if @points < 3;  # at least three points required for a convex hull
-    
-    # find out convex hull
-    my $convex_hull = convex_hull(\@points);
-    
-    my @extruded_length = ();  # for each extruder
-    
-    # skirt may be printed on several layers, having distinct layer heights,
-    # but loops must be aligned so can't vary width/spacing
-    # TODO: use each extruder's own flow
-    my $first_layer_height = $self->skirt_first_layer_height;
-    my $flow = $self->skirt_flow;
-    my $spacing = $flow->spacing;
-    my $mm3_per_mm = $flow->mm3_per_mm;
-    
-    my @extruders_e_per_mm = ();
-    my $extruder_idx = 0;
-    
-    my $skirts = $self->config->skirts;
-    $skirts ||= 1 if $self->has_infinite_skirt;
-    
-    # draw outlines from outside to inside
-    # loop while we have less skirts than required or any extruder hasn't reached the min length if any
-    my $distance = scale max($self->config->skirt_distance, $self->config->brim_width);
-    for (my $i = $skirts; $i > 0; $i--) {
-        $distance += scale $spacing;
-        my $loop = offset([$convex_hull], $distance, JT_ROUND, scale(0.1))->[0];
-        my $eloop = Slic3r::ExtrusionLoop->new_from_paths(
-            Slic3r::ExtrusionPath->new(
-                polyline        => Slic3r::Polygon->new(@$loop)->split_at_first_point,
-                role            => EXTR_ROLE_SKIRT,
-                mm3_per_mm      => $mm3_per_mm,         # this will be overridden at G-code export time
-                width           => $flow->width,
-                height          => $first_layer_height, # this will be overridden at G-code export time
-            ),
-        );
-        $eloop->role(EXTRL_ROLE_SKIRT);
-        $self->skirt->append($eloop);
-        
-        if ($self->config->min_skirt_length > 0) {
-            $extruded_length[$extruder_idx] ||= 0;
-            if (!$extruders_e_per_mm[$extruder_idx]) {
-                my $config = Slic3r::Config::GCode->new;
-                $config->apply_static($self->config);
-                my $extruder = Slic3r::Extruder->new($extruder_idx, $config);
-                $extruders_e_per_mm[$extruder_idx] = $extruder->e_per_mm($mm3_per_mm);
-            }
-            $extruded_length[$extruder_idx] += unscale $loop->length * $extruders_e_per_mm[$extruder_idx];
-            $i++ if defined first { ($extruded_length[$_] // 0) < $self->config->min_skirt_length } 0 .. $#{$self->extruders};
-            if ($extruded_length[$extruder_idx] >= $self->config->min_skirt_length) {
-                if ($extruder_idx < $#{$self->extruders}) {
-                    $extruder_idx++;
-                    next;
-                }
-            }
-        }
-    }
-    
-    $self->skirt->reverse;
-    
     $self->set_step_done(STEP_SKIRT);
 }
 
@@ -327,140 +221,38 @@ sub make_brim {
     $self->make_skirt;
     
     return if $self->step_done(STEP_BRIM);
+
     $self->set_step_started(STEP_BRIM);
-    
     # since this method must be idempotent, we clear brim paths *before*
     # checking whether we need to generate them
     $self->brim->clear;
-    
-    if ($self->config->brim_width == 0) {
-        $self->set_step_done(STEP_BRIM);
-        return;
+    if ($self->config->brim_width > 0) {
+        $self->status_cb->(88, "Generating brim");
+        $self->_make_brim;
     }
-    $self->status_cb->(88, "Generating brim");
-    
-    # brim is only printed on first layer and uses perimeter extruder
-    my $first_layer_height = $self->skirt_first_layer_height;
-    my $flow = $self->brim_flow;
-    my $mm3_per_mm = $flow->mm3_per_mm;
-    
-    my $grow_distance = $flow->scaled_width / 2;
-    my @islands = (); # array of polygons
-    foreach my $obj_idx (0 .. ($self->object_count - 1)) {
-        my $object = $self->objects->[$obj_idx];
-        my $layer0 = $object->get_layer(0);
-        my @object_islands = (
-            (map $_->contour, @{$layer0->slices}),
-        );
-        if (@{ $object->support_layers }) {
-            my $support_layer0 = $object->support_layers->[0];
-            push @object_islands,
-                (map @{$_->polyline->grow($grow_distance)}, @{$support_layer0->support_fills})
-                if $support_layer0->support_fills;
-            push @object_islands,
-                (map @{$_->polyline->grow($grow_distance)}, @{$support_layer0->support_interface_fills})
-                if $support_layer0->support_interface_fills;
-        }
-        foreach my $copy (@{$object->_shifted_copies}) {
-            push @islands, map { $_->translate(@$copy); $_ } map $_->clone, @object_islands;
-        }
-    }
-    
-    my @loops = ();
-    my $num_loops = sprintf "%.0f", $self->config->brim_width / $flow->width;
-    for my $i (reverse 1 .. $num_loops) {
-        # JT_SQUARE ensures no vertex is outside the given offset distance
-        # -0.5 because islands are not represented by their centerlines
-        # (first offset more, then step back - reverse order than the one used for 
-        # perimeters because here we're offsetting outwards)
-        push @loops, @{offset2(\@islands, ($i + 0.5) * $flow->scaled_spacing, -1.0 * $flow->scaled_spacing, JT_SQUARE)};
-    }
-    
-    $self->brim->append(map Slic3r::ExtrusionLoop->new_from_paths(
-        Slic3r::ExtrusionPath->new(
-            polyline        => Slic3r::Polygon->new(@$_)->split_at_first_point,
-            role            => EXTR_ROLE_SKIRT,
-            mm3_per_mm      => $mm3_per_mm,
-            width           => $flow->width,
-            height          => $first_layer_height,
-        ),
-    ), reverse @{union_pt_chained(\@loops)});
-    
+
     $self->set_step_done(STEP_BRIM);
 }
 
-sub write_gcode {
+sub make_wipe_tower {
     my $self = shift;
-    my ($file) = @_;
     
-    # open output gcode file if we weren't supplied a file-handle
-    my $fh;
-    if (ref $file eq 'IO::Scalar') {
-        $fh = $file;
-    } else {
-        Slic3r::open(\$fh, ">", $file)
-            or die "Failed to open $file for writing\n";
-        
-        # enable UTF-8 output since user might have entered Unicode characters in fields like notes
-        binmode $fh, ':utf8';
+    # prerequisites
+    $_->make_perimeters for @{$self->objects};
+    $_->infill for @{$self->objects};
+    $_->generate_support_material for @{$self->objects};
+    $self->make_skirt;
+    $self->make_brim;
+    
+    return if $self->step_done(STEP_WIPE_TOWER);
+    
+    $self->set_step_started(STEP_WIPE_TOWER);
+    $self->_clear_wipe_tower;
+    if ($self->has_wipe_tower) {
+#       $self->status_cb->(95, "Generating wipe tower");
+        $self->_make_wipe_tower;
     }
-    
-    my $exporter = Slic3r::Print::GCode->new(
-        print   => $self,
-        fh      => $fh,
-    );
-    $exporter->export;
-    
-    # close our gcode file
-    close $fh;
-}
-
-# this method will return the supplied input file path after expanding its
-# format variables with their values
-sub expanded_output_filepath {
-    my $self = shift;
-    my ($path) = @_;
-    
-    return undef if !@{$self->objects};
-    my $input_file = first { defined $_ } map $_->model_object->input_file, @{$self->objects};
-    return undef if !defined $input_file;
-    
-    my $filename = my $filename_base = basename($input_file);
-    $filename_base =~ s/\.[^.]+$//;  # without suffix
-    
-    # set filename in placeholder parser so that it's available also in custom G-code
-    $self->placeholder_parser->set(input_filename => $filename);
-    $self->placeholder_parser->set(input_filename_base => $filename_base);
-    
-    # set other variables from model object
-    $self->placeholder_parser->set_multiple(
-        scale => [ map $_->model_object->instances->[0]->scaling_factor * 100 . "%", @{$self->objects} ],
-    );
-    
-    if ($path && -d $path) {
-        # if output path is an existing directory, we take that and append
-        # the specified filename format
-        $path = File::Spec->join($path, $self->config->output_filename_format);
-    } elsif (!$path) {
-        # if no explicit output file was defined, we take the input
-        # file directory and append the specified filename format
-        $path = (fileparse($input_file))[1] . $self->config->output_filename_format;
-    } else {
-        # path is a full path to a file so we use it as it is
-    }
-    
-    # make sure we use an up-to-date timestamp
-    $self->placeholder_parser->update_timestamp;
-    return $self->placeholder_parser->process($path);
-}
-
-# Wrapper around the C++ Slic3r::Print::validate()
-# to produce a Perl exception without a hang-up on some Strawberry perls.
-sub validate
-{
-    my $self = shift;
-    my $err = $self->_validate;
-    die $err . "\n" if (defined($err) && $err ne '');
+    $self->set_step_done(STEP_WIPE_TOWER);
 }
 
 1;

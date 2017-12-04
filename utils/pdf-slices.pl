@@ -7,6 +7,7 @@ use warnings;
 BEGIN {
     use FindBin;
     use lib "$FindBin::Bin/../lib";
+    use local::lib "$FindBin::Bin/../local-lib";
 }
 
 use Getopt::Long qw(:config no_auto_abbrev);
@@ -82,7 +83,7 @@ my %opt = ();
     my $output_file = $opt{output_file};
     if (!defined $output_file) {
         $output_file = $input_file;
-        $output_file =~ s/\.(?:stl)$/.pdf/i;
+        $output_file =~ s/\.(?:[sS][tT][lL])$/.pdf/;
     }
     $pdf->saveas($output_file);
     printf "PDF file written to %s\n", $output_file;

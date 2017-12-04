@@ -1,12 +1,14 @@
 #include "BoundingBox.hpp"
 #include <algorithm>
+#include <assert.h>
 
 namespace Slic3r {
 
 template <class PointClass>
 BoundingBoxBase<PointClass>::BoundingBoxBase(const std::vector<PointClass> &points)
 {
-    if (points.empty()) CONFESS("Empty point set supplied to BoundingBoxBase constructor");
+    if (points.empty()) 
+        CONFESS("Empty point set supplied to BoundingBoxBase constructor");
     typename std::vector<PointClass>::const_iterator it = points.begin();
     this->min.x = this->max.x = it->x;
     this->min.y = this->max.y = it->y;
@@ -25,7 +27,8 @@ template <class PointClass>
 BoundingBox3Base<PointClass>::BoundingBox3Base(const std::vector<PointClass> &points)
     : BoundingBoxBase<PointClass>(points)
 {
-    if (points.empty()) CONFESS("Empty point set supplied to BoundingBox3Base constructor");
+    if (points.empty())
+        CONFESS("Empty point set supplied to BoundingBox3Base constructor");
     typename std::vector<PointClass>::const_iterator it = points.begin();
     this->min.z = this->max.z = it->z;
     for (++it; it != points.end(); ++it) {
@@ -38,9 +41,10 @@ template BoundingBox3Base<Pointf3>::BoundingBox3Base(const std::vector<Pointf3> 
 BoundingBox::BoundingBox(const Lines &lines)
 {
     Points points;
-    for (Lines::const_iterator line = lines.begin(); line != lines.end(); ++line) {
-        points.push_back(line->a);
-        points.push_back(line->b);
+    points.reserve(lines.size());
+    for (const Line &line : lines) {
+        points.emplace_back(line.a);
+        points.emplace_back(line.b);
     }
     *this = BoundingBox(points);
 }
@@ -125,15 +129,18 @@ template void BoundingBoxBase<Pointf>::merge(const Pointfs &points);
 template <class PointClass> void
 BoundingBoxBase<PointClass>::merge(const BoundingBoxBase<PointClass> &bb)
 {
-    if (this->defined) {
-        this->min.x = std::min(bb.min.x, this->min.x);
-        this->min.y = std::min(bb.min.y, this->min.y);
-        this->max.x = std::max(bb.max.x, this->max.x);
-        this->max.y = std::max(bb.max.y, this->max.y);
-    } else {
-        this->min = bb.min;
-        this->max = bb.max;
-        this->defined = true;
+    assert(bb.defined || bb.min.x >= bb.max.x || bb.min.y >= bb.max.y);
+    if (bb.defined) {
+        if (this->defined) {
+            this->min.x = std::min(bb.min.x, this->min.x);
+            this->min.y = std::min(bb.min.y, this->min.y);
+            this->max.x = std::max(bb.max.x, this->max.x);
+            this->max.y = std::max(bb.max.y, this->max.y);
+        } else {
+            this->min = bb.min;
+            this->max = bb.max;
+            this->defined = true;
+        }
     }
 }
 template void BoundingBoxBase<Point>::merge(const BoundingBoxBase<Point> &bb);
@@ -160,11 +167,14 @@ template void BoundingBox3Base<Pointf3>::merge(const Pointf3s &points);
 template <class PointClass> void
 BoundingBox3Base<PointClass>::merge(const BoundingBox3Base<PointClass> &bb)
 {
-    if (this->defined) {
-        this->min.z = std::min(bb.min.z, this->min.z);
-        this->max.z = std::max(bb.max.z, this->max.z);
+    assert(bb.defined || bb.min.x >= bb.max.x || bb.min.y >= bb.max.y || bb.min.z >= bb.max.z);
+    if (bb.defined) {
+        if (this->defined) {
+            this->min.z = std::min(bb.min.z, this->min.z);
+            this->max.z = std::max(bb.max.z, this->max.z);
+        }
+        BoundingBoxBase<PointClass>::merge(bb);
     }
-    BoundingBoxBase<PointClass>::merge(bb);
 }
 template void BoundingBox3Base<Pointf3>::merge(const BoundingBox3Base<Pointf3> &bb);
 
@@ -183,9 +193,9 @@ BoundingBox3Base<PointClass>::size() const
 }
 template Pointf3 BoundingBox3Base<Pointf3>::size() const;
 
-template <class PointClass> double
-BoundingBoxBase<PointClass>::radius() const
+template <class PointClass> double BoundingBoxBase<PointClass>::radius() const
 {
+    assert(this->defined);
     double x = this->max.x - this->min.x;
     double y = this->max.y - this->min.y;
     return 0.5 * sqrt(x*x+y*y);
@@ -193,8 +203,7 @@ BoundingBoxBase<PointClass>::radius() const
 template double BoundingBoxBase<Point>::radius() const;
 template double BoundingBoxBase<Pointf>::radius() const;
 
-template <class PointClass> double
-BoundingBox3Base<PointClass>::radius() const
+template <class PointClass> double BoundingBox3Base<PointClass>::radius() const
 {
     double x = this->max.x - this->min.x;
     double y = this->max.y - this->min.y;
@@ -202,23 +211,6 @@ BoundingBox3Base<PointClass>::radius() const
     return 0.5 * sqrt(x*x+y*y+z*z);
 }
 template double BoundingBox3Base<Pointf3>::radius() const;
-
-template <class PointClass> void
-BoundingBoxBase<PointClass>::translate(coordf_t x, coordf_t y)
-{
-    this->min.translate(x, y);
-    this->max.translate(x, y);
-}
-template void BoundingBoxBase<Point>::translate(coordf_t x, coordf_t y);
-template void BoundingBoxBase<Pointf>::translate(coordf_t x, coordf_t y);
-
-template <class PointClass> void
-BoundingBox3Base<PointClass>::translate(coordf_t x, coordf_t y, coordf_t z)
-{
-    this->min.translate(x, y, z);
-    this->max.translate(x, y, z);
-}
-template void BoundingBox3Base<Pointf3>::translate(coordf_t x, coordf_t y, coordf_t z);
 
 template <class PointClass> void
 BoundingBoxBase<PointClass>::offset(coordf_t delta)
@@ -258,25 +250,6 @@ BoundingBox3Base<PointClass>::center() const
     );
 }
 template Pointf3 BoundingBox3Base<Pointf3>::center() const;
-
-template <class PointClass> bool
-BoundingBoxBase<PointClass>::contains(const PointClass &point) const
-{
-    return point.x >= this->min.x && point.x <= this->max.x
-        && point.y >= this->min.y && point.y <= this->max.y;
-}
-template bool BoundingBoxBase<Point>::contains(const Point &point) const;
-template bool BoundingBoxBase<Pointf>::contains(const Pointf &point) const;
-
-template <class PointClass> bool
-BoundingBoxBase<PointClass>::overlap(const BoundingBoxBase<PointClass> &other) const
-{
-    return ! (this->max.x < other.min.x || this->min.x > other.max.x ||
-              this->max.y < other.min.y || this->min.y > other.max.y);
-}
-template bool BoundingBoxBase<Point>::overlap(const BoundingBoxBase<Point> &point) const;
-template bool BoundingBoxBase<Pointf>::overlap(const BoundingBoxBase<Pointf> &point) const;
-
 
 // Align a coordinate to a grid. The coordinate may be negative,
 // the aligned value will never be bigger than the original one.

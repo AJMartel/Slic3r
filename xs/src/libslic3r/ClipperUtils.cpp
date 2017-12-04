@@ -9,14 +9,7 @@
 
 #include <Shiny/Shiny.h>
 
-// Factor to convert from coord_t (which is int32) to an int64 type used by the Clipper library
-// for general offsetting (the offset(), offset2(), offset_ex() functions) and for the safety offset,
-// which is optionally executed by other functions (union, intersection, diff).
-// By the way, is the scalling for offset needed at all?
-#define CLIPPER_OFFSET_POWER_OF_2 17
-// 2^17=131072
-#define CLIPPER_OFFSET_SCALE (1 << CLIPPER_OFFSET_POWER_OF_2)
-#define CLIPPER_OFFSET_SCALE_ROUNDING_DELTA ((1 << (CLIPPER_OFFSET_POWER_OF_2 - 1)) - 1)
+#define CLIPPER_OFFSET_SHORTEST_EDGE_FACTOR (0.005f)
 
 namespace Slic3r {
 
@@ -219,9 +212,11 @@ ClipperLib::Paths _offset(ClipperLib::Paths &&input, ClipperLib::EndType endType
         co.ArcTolerance = miterLimit;
     else
         co.MiterLimit = miterLimit;
+    float delta_scaled = delta * float(CLIPPER_OFFSET_SCALE);
+    co.ShortestEdgeLength = double(std::abs(delta_scaled * CLIPPER_OFFSET_SHORTEST_EDGE_FACTOR));
     co.AddPaths(input, joinType, endType);
     ClipperLib::Paths retval;
-    co.Execute(retval, delta * float(CLIPPER_OFFSET_SCALE));
+    co.Execute(retval, delta_scaled);
     
     // unscale output
     unscaleClipperPolygons(retval);
@@ -253,6 +248,7 @@ ClipperLib::Paths _offset(const Slic3r::ExPolygon &expolygon, const float delta,
             co.ArcTolerance = miterLimit * double(CLIPPER_OFFSET_SCALE);
         else
             co.MiterLimit = miterLimit;
+        co.ShortestEdgeLength = double(std::abs(delta_scaled * CLIPPER_OFFSET_SHORTEST_EDGE_FACTOR));
         co.AddPath(input, joinType, ClipperLib::etClosedPolygon);
         co.Execute(contours, delta_scaled);
     }
@@ -269,6 +265,7 @@ ClipperLib::Paths _offset(const Slic3r::ExPolygon &expolygon, const float delta,
                 co.ArcTolerance = miterLimit * double(CLIPPER_OFFSET_SCALE);
             else
                 co.MiterLimit = miterLimit;
+            co.ShortestEdgeLength = double(std::abs(delta_scaled * CLIPPER_OFFSET_SHORTEST_EDGE_FACTOR));
             co.AddPath(input, joinType, ClipperLib::etClosedPolygon);
             ClipperLib::Paths out;
             co.Execute(out, - delta_scaled);
@@ -317,6 +314,7 @@ ClipperLib::Paths _offset(const Slic3r::ExPolygons &expolygons, const float delt
                 co.ArcTolerance = miterLimit * double(CLIPPER_OFFSET_SCALE);
             else
                 co.MiterLimit = miterLimit;
+            co.ShortestEdgeLength = double(std::abs(delta_scaled * CLIPPER_OFFSET_SHORTEST_EDGE_FACTOR));
             co.AddPath(input, joinType, ClipperLib::etClosedPolygon);
             co.Execute(contours, delta_scaled);
         }
@@ -340,6 +338,7 @@ ClipperLib::Paths _offset(const Slic3r::ExPolygons &expolygons, const float delt
                         co.ArcTolerance = miterLimit * double(CLIPPER_OFFSET_SCALE);
                     else
                         co.MiterLimit = miterLimit;
+                    co.ShortestEdgeLength = double(std::abs(delta_scaled * CLIPPER_OFFSET_SHORTEST_EDGE_FACTOR));
                     co.AddPath(input, joinType, ClipperLib::etClosedPolygon);
                     ClipperLib::Paths out;
                     co.Execute(out, - delta_scaled);
@@ -417,17 +416,20 @@ _offset2(const Polygons &polygons, const float delta1, const float delta2,
     } else {
         co.MiterLimit = miterLimit;
     }
+    float delta_scaled1 = delta1 * float(CLIPPER_OFFSET_SCALE);
+    float delta_scaled2 = delta2 * float(CLIPPER_OFFSET_SCALE);
+    co.ShortestEdgeLength = double(std::max(std::abs(delta_scaled1), std::abs(delta_scaled2)) * CLIPPER_OFFSET_SHORTEST_EDGE_FACTOR);
     
     // perform first offset
     ClipperLib::Paths output1;
     co.AddPaths(input, joinType, ClipperLib::etClosedPolygon);
-    co.Execute(output1, delta1 * float(CLIPPER_OFFSET_SCALE));
+    co.Execute(output1, delta_scaled1);
     
     // perform second offset
     co.Clear();
     co.AddPaths(output1, joinType, ClipperLib::etClosedPolygon);
     ClipperLib::Paths retval;
-    co.Execute(retval, delta2 * float(CLIPPER_OFFSET_SCALE));
+    co.Execute(retval, delta_scaled2);
     
     // unscale output
     unscaleClipperPolygons(retval);
@@ -488,8 +490,40 @@ _clipper_do(const ClipperLib::ClipType clipType, const Polygons &subject,
     return retval;
 }
 
-ClipperLib::PolyTree
-_clipper_do_pl(const ClipperLib::ClipType clipType, const Polylines &subject, 
+// Fix of #117: A large fractal pyramid takes ages to slice
+// The Clipper library has difficulties processing overlapping polygons.
+// Namely, the function Clipper::JoinCommonEdges() has potentially a terrible time complexity if the output
+// of the operation is of the PolyTree type.
+// This function implmenets a following workaround:
+// 1) Peform the Clipper operation with the output to Paths. This method handles overlaps in a reasonable time.
+// 2) Run Clipper Union once again to extract the PolyTree from the result of 1).
+inline ClipperLib::PolyTree _clipper_do_polytree2(const ClipperLib::ClipType clipType, const Polygons &subject, 
+    const Polygons &clip, const ClipperLib::PolyFillType fillType, const bool safety_offset_)
+{
+    // read input
+    ClipperLib::Paths input_subject = Slic3rMultiPoints_to_ClipperPaths(subject);
+    ClipperLib::Paths input_clip    = Slic3rMultiPoints_to_ClipperPaths(clip);
+    
+    // perform safety offset
+    if (safety_offset_)
+        safety_offset((clipType == ClipperLib::ctUnion) ? &input_subject : &input_clip);
+    
+    ClipperLib::Clipper clipper;
+    clipper.AddPaths(input_subject, ClipperLib::ptSubject, true);
+    clipper.AddPaths(input_clip,    ClipperLib::ptClip,    true);
+    // Perform the operation with the output to input_subject.
+    // This pass does not generate a PolyTree, which is a very expensive operation with the current Clipper library
+    // if there are overapping edges.
+    clipper.Execute(clipType, input_subject, fillType, fillType);
+    // Perform an additional Union operation to generate the PolyTree ordering.
+    clipper.Clear();
+    clipper.AddPaths(input_subject, ClipperLib::ptSubject, true);
+    ClipperLib::PolyTree retval;
+    clipper.Execute(ClipperLib::ctUnion, retval, fillType, fillType);
+    return retval;
+}
+
+ClipperLib::PolyTree _clipper_do_pl(const ClipperLib::ClipType clipType, const Polylines &subject, 
     const Polygons &clip, const ClipperLib::PolyFillType fillType,
     const bool safety_offset_)
 {
@@ -514,33 +548,25 @@ _clipper_do_pl(const ClipperLib::ClipType clipType, const Polylines &subject,
     return retval;
 }
 
-Polygons
-_clipper(ClipperLib::ClipType clipType, const Polygons &subject, 
-    const Polygons &clip, bool safety_offset_)
+Polygons _clipper(ClipperLib::ClipType clipType, const Polygons &subject, const Polygons &clip, bool safety_offset_)
 {
     return ClipperPaths_to_Slic3rPolygons(_clipper_do<ClipperLib::Paths>(clipType, subject, clip, ClipperLib::pftNonZero, safety_offset_));
 }
 
-ExPolygons
-_clipper_ex(ClipperLib::ClipType clipType, const Polygons &subject, 
-    const Polygons &clip, bool safety_offset_)
+ExPolygons _clipper_ex(ClipperLib::ClipType clipType, const Polygons &subject, const Polygons &clip, bool safety_offset_)
 {
-    ClipperLib::PolyTree polytree = _clipper_do<ClipperLib::PolyTree>(clipType, subject, clip, ClipperLib::pftNonZero, safety_offset_);
+    ClipperLib::PolyTree polytree = _clipper_do_polytree2(clipType, subject, clip, ClipperLib::pftNonZero, safety_offset_);
     return PolyTreeToExPolygons(polytree);
 }
 
-Polylines
-_clipper_pl(ClipperLib::ClipType clipType, const Polylines &subject, 
-    const Polygons &clip, bool safety_offset_)
+Polylines _clipper_pl(ClipperLib::ClipType clipType, const Polylines &subject, const Polygons &clip, bool safety_offset_)
 {
     ClipperLib::Paths output;
     ClipperLib::PolyTreeToPaths(_clipper_do_pl(clipType, subject, clip, ClipperLib::pftNonZero, safety_offset_), output);
     return ClipperPaths_to_Slic3rPolylines(output);
 }
 
-Polylines
-_clipper_pl(ClipperLib::ClipType clipType, const Polygons &subject, 
-    const Polygons &clip, bool safety_offset_)
+Polylines _clipper_pl(ClipperLib::ClipType clipType, const Polygons &subject, const Polygons &clip, bool safety_offset_)
 {
     // transform input polygons into polylines
     Polylines polylines;

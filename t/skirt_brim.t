@@ -5,6 +5,7 @@ use warnings;
 BEGIN {
     use FindBin;
     use lib "$FindBin::Bin/../lib";
+    use local::lib "$FindBin::Bin/../local-lib";
 }
 
 use List::Util qw(first);
@@ -13,12 +14,12 @@ use Slic3r::Geometry qw(unscale convex_hull);
 use Slic3r::Test;
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('skirts', 1);
     $config->set('skirt_height', 2);
     $config->set('perimeters', 0);
     $config->set('support_material_speed', 99);
-    $config->set('cooling', 0);                     # to prevent speeds to be altered
+    $config->set('cooling', [ 0 ]);                 # to prevent speeds to be altered
     $config->set('first_layer_speed', '100%');      # to prevent speeds to be altered
     
     my $test = sub {
@@ -45,14 +46,14 @@ use Slic3r::Test;
 }
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('skirts', 0);
     $config->set('perimeters', 0);
     $config->set('top_solid_layers', 0);            # to prevent solid shells and their speeds
     $config->set('bottom_solid_layers', 0);         # to prevent solid shells and their speeds
     $config->set('brim_width', 5);
     $config->set('support_material_speed', 99);
-    $config->set('cooling', 0);                     # to prevent speeds to be altered
+    $config->set('cooling', [ 0 ]);                 # to prevent speeds to be altered
     $config->set('first_layer_speed', '100%');      # to prevent speeds to be altered
     
     my $print = Slic3r::Test::init_print('20mm_cube', config => $config);
@@ -71,7 +72,7 @@ use Slic3r::Test;
 }
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('skirts', 1);
     $config->set('brim_width', 10);
     
@@ -80,7 +81,7 @@ use Slic3r::Test;
 }
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('skirts', 1);
     $config->set('skirt_height', 0);
     
@@ -89,7 +90,7 @@ use Slic3r::Test;
 }
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('layer_height', 0.4);
     $config->set('first_layer_height', 0.4);
     $config->set('skirts', 1);
@@ -97,7 +98,7 @@ use Slic3r::Test;
     $config->set('support_material_speed', 99);
     $config->set('perimeter_extruder', 1);
     $config->set('support_material_extruder', 2);
-    $config->set('cooling', 0);                     # to prevent speeds to be altered
+    $config->set('cooling', [ 0 ]);                 # to prevent speeds to be altered
     $config->set('first_layer_speed', '100%');      # to prevent speeds to be altered
     
     my $print = Slic3r::Test::init_print('overhang', config => $config);
@@ -134,7 +135,7 @@ use Slic3r::Test;
 }
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('min_skirt_length', 20);
     my $print = Slic3r::Test::init_print('20mm_cube', config => $config);
     ok Slic3r::Test::gcode($print), 'no crash when using min_skirt_length';

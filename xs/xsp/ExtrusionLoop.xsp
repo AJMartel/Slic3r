@@ -21,15 +21,14 @@
     double length();
     bool split_at_vertex(Point* point)
         %code{% RETVAL = THIS->split_at_vertex(*point); %};
-    void split_at(Point* point)
-        %code{% THIS->split_at(*point); %};
+    void split_at(Point* point, int prefer_non_overhang = 0)
+        %code{% THIS->split_at(*point, prefer_non_overhang != 0); %};
     ExtrusionPaths clip_end(double distance)
         %code{% THIS->clip_end(distance, &RETVAL); %};
     bool has_overhang_point(Point* point)
         %code{% RETVAL = THIS->has_overhang_point(*point); %};
-    bool is_perimeter();
-    bool is_infill();
-    bool is_solid_infill();
+    ExtrusionRole role() const;
+    ExtrusionLoopRole loop_role() const;
     Polygons polygons_covered_by_width();
     Polygons polygons_covered_by_spacing();
 %{
@@ -43,16 +42,6 @@ ExtrusionLoop::arrayref()
             av_store(av, it - THIS->paths.begin(), perl_to_SV_ref(*it));
         }
         RETVAL = newRV_noinc((SV*)av);
-    OUTPUT:
-        RETVAL
-
-ExtrusionLoopRole
-ExtrusionLoop::role(...)
-    CODE:
-        if (items > 1) {
-            THIS->role = (ExtrusionLoopRole)SvUV(ST(1));
-        }
-        RETVAL = THIS->role;
     OUTPUT:
         RETVAL
 

@@ -35,10 +35,10 @@
         %code%{ THIS->make_perimeters(*slices, fill_surfaces); %};
     double infill_area_threshold();
 
-    void export_region_slices_to_svg(const char *path);
-    void export_region_fill_surfaces_to_svg(const char *path);
-    void export_region_slices_to_svg_debug(const char *name);
-    void export_region_fill_surfaces_to_svg_debug(const char *name);
+    void export_region_slices_to_svg(const char *path) const;
+    void export_region_fill_surfaces_to_svg(const char *path) const;
+    void export_region_slices_to_svg_debug(const char *name) const;
+    void export_region_fill_surfaces_to_svg_debug(const char *name) const;
 };
 
 %name{Slic3r::Layer} class Layer {
@@ -87,10 +87,6 @@
     
     void make_slices();
     void merge_slices();
-    bool any_internal_region_slice_contains_polyline(Polyline* polyline)
-        %code%{ RETVAL = THIS->any_internal_region_slice_contains(*polyline); %};
-    bool any_bottom_region_slice_contains_polyline(Polyline* polyline)
-        %code%{ RETVAL = THIS->any_bottom_region_slice_contains(*polyline); %};
     void make_perimeters();
     void make_fills();
 
@@ -110,9 +106,6 @@
         %code%{ RETVAL = &THIS->support_islands; %};
     Ref<ExtrusionEntityCollection> support_fills()
         %code%{ RETVAL = &THIS->support_fills; %};
-    Ref<ExtrusionEntityCollection> support_interface_fills()
-        %code%{ RETVAL = &THIS->support_interface_fills; %};
-
 
     // copies of some Layer methods, because the parameter wrapper code
     // gets confused about getting a Layer::Support instead of a Layer

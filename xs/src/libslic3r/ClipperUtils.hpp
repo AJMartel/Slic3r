@@ -12,6 +12,18 @@ using ClipperLib::jtMiter;
 using ClipperLib::jtRound;
 using ClipperLib::jtSquare;
 
+// Factor to convert from coord_t (which is int32) to an int64 type used by the Clipper library
+// for general offsetting (the offset(), offset2(), offset_ex() functions) and for the safety offset,
+// which is optionally executed by other functions (union, intersection, diff).
+// This scaling (cca 130t) is applied over the usual SCALING_FACTOR.
+// By the way, is the scalling for offset needed at all?
+// The reason to apply this scaling may be to match the resolution of the double mantissa.
+#define CLIPPER_OFFSET_POWER_OF_2 17
+// 2^17=131072
+#define CLIPPER_OFFSET_SCALE (1 << CLIPPER_OFFSET_POWER_OF_2)
+#define CLIPPER_OFFSET_SCALE_ROUNDING_DELTA ((1 << (CLIPPER_OFFSET_POWER_OF_2 - 1)) - 1)
+#define CLIPPER_MAX_COORD_UNSCALED (ClipperLib::hiRange / CLIPPER_OFFSET_SCALE)
+
 namespace Slic3r {
 
 //-----------------------------------------------------------
@@ -160,39 +172,40 @@ intersection_pl(const Slic3r::Polylines &subject, const Slic3r::Polygons &clip, 
     return _clipper_pl(ClipperLib::ctIntersection, subject, clip, safety_offset_);
 }
 
-inline Slic3r::Lines
-intersection_ln(const Slic3r::Lines &subject, const Slic3r::Polygons &clip, bool safety_offset_ = false)
+inline Slic3r::Lines intersection_ln(const Slic3r::Lines &subject, const Slic3r::Polygons &clip, bool safety_offset_ = false)
 {
     return _clipper_ln(ClipperLib::ctIntersection, subject, clip, safety_offset_);
 }
 
+inline Slic3r::Lines intersection_ln(const Slic3r::Line &subject, const Slic3r::Polygons &clip, bool safety_offset_ = false)
+{
+    Slic3r::Lines lines;
+    lines.emplace_back(subject);
+    return _clipper_ln(ClipperLib::ctIntersection, lines, clip, safety_offset_);
+}
+
 // union
-inline Slic3r::Polygons
-union_(const Slic3r::Polygons &subject, bool safety_offset_ = false)
+inline Slic3r::Polygons union_(const Slic3r::Polygons &subject, bool safety_offset_ = false)
 {
     return _clipper(ClipperLib::ctUnion, subject, Slic3r::Polygons(), safety_offset_);
 }
 
-inline Slic3r::Polygons
-union_(const Slic3r::Polygons &subject, const Slic3r::Polygons &subject2, bool safety_offset_ = false)
+inline Slic3r::Polygons union_(const Slic3r::Polygons &subject, const Slic3r::Polygons &subject2, bool safety_offset_ = false)
 {
     return _clipper(ClipperLib::ctUnion, subject, subject2, safety_offset_);
 }
 
-inline Slic3r::ExPolygons
-union_ex(const Slic3r::Polygons &subject, bool safety_offset_ = false)
+inline Slic3r::ExPolygons union_ex(const Slic3r::Polygons &subject, bool safety_offset_ = false)
 {
     return _clipper_ex(ClipperLib::ctUnion, subject, Slic3r::Polygons(), safety_offset_);
 }
 
-inline Slic3r::ExPolygons
-union_ex(const Slic3r::ExPolygons &subject, bool safety_offset_ = false)
+inline Slic3r::ExPolygons union_ex(const Slic3r::ExPolygons &subject, bool safety_offset_ = false)
 {
     return _clipper_ex(ClipperLib::ctUnion, to_polygons(subject), Slic3r::Polygons(), safety_offset_);
 }
 
-inline Slic3r::ExPolygons
-union_ex(const Slic3r::Surfaces &subject, bool safety_offset_ = false)
+inline Slic3r::ExPolygons union_ex(const Slic3r::Surfaces &subject, bool safety_offset_ = false)
 {
     return _clipper_ex(ClipperLib::ctUnion, to_polygons(subject), Slic3r::Polygons(), safety_offset_);
 }

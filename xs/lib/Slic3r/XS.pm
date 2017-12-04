@@ -179,14 +179,6 @@ sub new_from_width {
     );
 }
 
-sub new_from_spacing {
-    my ($class, %args) = @_;
-    
-    return $class->_new_from_spacing(
-        @args{qw(spacing nozzle_diameter layer_height bridge)},
-    );
-}
-
 package Slic3r::Surface;
 
 sub new {
@@ -247,7 +239,21 @@ sub new {
     );
 }
 
-package Slic3r::GUI::_3DScene::GLVertexArray;
+package Slic3r::GUI::_3DScene::GLShader;
+sub CLONE_SKIP { 1 }
+
+package Slic3r::GUI::_3DScene::GLVolume::Collection;
+use overload
+    '@{}' => sub { $_[0]->arrayref },
+    'fallback' => 1;
+
+sub CLONE_SKIP { 1 }
+
+package Slic3r::GUI::PresetCollection;
+use overload
+    '@{}' => sub { $_[0]->arrayref },
+    'fallback' => 1;
+
 sub CLONE_SKIP { 1 }
 
 package main;
@@ -262,7 +268,6 @@ for my $class (qw(
         Slic3r::Config::Static
         Slic3r::ExPolygon
         Slic3r::ExPolygon::Collection
-        Slic3r::Extruder
         Slic3r::ExtrusionLoop
         Slic3r::ExtrusionMultiPath
         Slic3r::ExtrusionPath
@@ -271,14 +276,13 @@ for my $class (qw(
         Slic3r::Filler
         Slic3r::Flow
         Slic3r::GCode
-        Slic3r::GCode::AvoidCrossingPerimeters
-        Slic3r::GCode::OozePrevention
         Slic3r::GCode::PlaceholderParser
-        Slic3r::GCode::Wipe
-        Slic3r::GCode::Writer
         Slic3r::Geometry::BoundingBox
         Slic3r::Geometry::BoundingBoxf
         Slic3r::Geometry::BoundingBoxf3
+        Slic3r::GUI::_3DScene::GLVolume
+        Slic3r::GUI::Preset
+        Slic3r::GUI::PresetCollection
         Slic3r::Layer
         Slic3r::Layer::Region
         Slic3r::Layer::Support

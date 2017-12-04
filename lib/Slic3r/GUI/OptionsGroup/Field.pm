@@ -1,12 +1,17 @@
+# An input field class prototype.
 package Slic3r::GUI::OptionsGroup::Field;
 use Moo;
 
 # This is a base class for option fields.
 
 has 'parent'                => (is => 'ro', required => 1);
-has 'option'                => (is => 'ro', required => 1);     # Slic3r::GUI::OptionsGroup::Option
+# Slic3r::GUI::OptionsGroup::Option
+has 'option'                => (is => 'ro', required => 1);
+# On change callback
 has 'on_change'             => (is => 'rw', default => sub { sub {} });
 has 'on_kill_focus'         => (is => 'rw', default => sub { sub {} });
+# If set, the callback $self->on_change is not called.
+# This is used to avoid recursive invocation of the field change/update by wxWidgets.
 has 'disable_change_event'  => (is => 'rw', default => sub { 0 });
 
 # This method should not fire the on_change event
@@ -119,6 +124,10 @@ sub BUILD {
     });
 }
 
+sub get_value {
+    my ($self) = @_;
+    return $self->wxWindow->GetValue ? 1 : 0;
+}
 
 package Slic3r::GUI::OptionsGroup::Field::SpinCtrl;
 use Moo;
@@ -418,8 +427,10 @@ sub get_value {
 
 sub _string_to_colour {
     my ($self, $string) = @_;
-    
+
     $string =~ s/^#//;
+    # If the color is in an invalid format, set it to white.
+    $string = 'FFFFFF' if ($string !~ m/^[[:xdigit:]]{6}/);
     return Wx::Colour->new(unpack 'C*', pack 'H*', $string);
 }
 
@@ -514,7 +525,6 @@ has 'scale'         => (is => 'rw', default => sub { 10 });
 has 'slider'        => (is => 'rw');
 has 'textctrl'      => (is => 'rw');
 
-use Slic3r::Geometry qw(X Y);
 use Wx qw(:misc :sizer);
 use Wx::Event qw(EVT_SLIDER EVT_TEXT EVT_KILL_FOCUS);
 
@@ -542,13 +552,17 @@ sub BUILD {
     $sizer->Add($textctrl, 0, wxALIGN_CENTER_VERTICAL, 0);
     
     EVT_SLIDER($self->parent, $slider, sub {
-        $self->_update_textctrl;
-        $self->_on_change($self->option->opt_id);
+        if (! $self->disable_change_event) {
+            $self->textctrl->SetLabel($self->get_value);
+            $self->_on_change($self->option->opt_id);
+        }
     });
     EVT_TEXT($self->parent, $textctrl, sub {
         my $value = $textctrl->GetValue;
         if ($value =~ /^-?\d+(\.\d*)?$/) {
-            $self->set_value($value);
+            $self->disable_change_event(1);
+            $self->slider->SetValue($value*$self->scale);
+            $self->disable_change_event(0);
             $self->_on_change($self->option->opt_id);
         }
     });
@@ -562,18 +576,13 @@ sub set_value {
     
     $self->disable_change_event(1);
     $self->slider->SetValue($value*$self->scale);
-    $self->_update_textctrl;
+    $self->textctrl->SetLabel($self->get_value);
     $self->disable_change_event(0);
 }
 
 sub get_value {
     my ($self) = @_;
     return $self->slider->GetValue/$self->scale;
-}
-
-sub _update_textctrl {
-    my ($self) = @_;
-    $self->textctrl->SetLabel($self->get_value);
 }
 
 sub enable {

@@ -31,6 +31,7 @@ Clone<BoundingBoxf3>       O_OBJECT_SLIC3R_T
 
 DynamicPrintConfig*        O_OBJECT_SLIC3R
 Ref<DynamicPrintConfig>    O_OBJECT_SLIC3R_T
+Clone<DynamicPrintConfig>  O_OBJECT_SLIC3R_T
 
 StaticPrintConfig*         O_OBJECT_SLIC3R
 Ref<StaticPrintConfig>     O_OBJECT_SLIC3R_T
@@ -138,10 +139,6 @@ Clone<Surface>             O_OBJECT_SLIC3R_T
 SurfaceCollection*         O_OBJECT_SLIC3R
 Ref<SurfaceCollection>     O_OBJECT_SLIC3R_T
 
-Extruder*                  O_OBJECT_SLIC3R
-Ref<Extruder>              O_OBJECT_SLIC3R_T
-Clone<Extruder>            O_OBJECT_SLIC3R_T
-
 Model*                     O_OBJECT_SLIC3R
 Ref<Model>                 O_OBJECT_SLIC3R_T
 Clone<Model>               O_OBJECT_SLIC3R_T
@@ -185,17 +182,9 @@ PlaceholderParser*         O_OBJECT_SLIC3R
 Ref<PlaceholderParser>     O_OBJECT_SLIC3R_T
 Clone<PlaceholderParser>   O_OBJECT_SLIC3R_T
 
-AvoidCrossingPerimeters*         O_OBJECT_SLIC3R
-Ref<AvoidCrossingPerimeters>     O_OBJECT_SLIC3R_T
-Clone<AvoidCrossingPerimeters>   O_OBJECT_SLIC3R_T
-
-Wipe*         O_OBJECT_SLIC3R
-Ref<Wipe>     O_OBJECT_SLIC3R_T
-Clone<Wipe>   O_OBJECT_SLIC3R_T
-
-OozePrevention*             O_OBJECT_SLIC3R
-Ref<OozePrevention>         O_OBJECT_SLIC3R_T
-Clone<OozePrevention>       O_OBJECT_SLIC3R_T
+CoolingBuffer*             O_OBJECT_SLIC3R
+Ref<CoolingBuffer>         O_OBJECT_SLIC3R_T
+Clone<CoolingBuffer>       O_OBJECT_SLIC3R_T
 
 GCode*                      O_OBJECT_SLIC3R
 Ref<GCode>                  O_OBJECT_SLIC3R_T
@@ -209,14 +198,6 @@ GCodeSender*               O_OBJECT_SLIC3R
 Ref<GCodeSender>           O_OBJECT_SLIC3R_T
 Clone<GCodeSender>         O_OBJECT_SLIC3R_T
 
-GCodeWriter*               O_OBJECT_SLIC3R
-Ref<GCodeWriter>           O_OBJECT_SLIC3R_T
-Clone<GCodeWriter>         O_OBJECT_SLIC3R_T
-
-GCodePressureEqualizer*    		O_OBJECT_SLIC3R
-Ref<GCodePressureEqualizer>     O_OBJECT_SLIC3R_T
-Clone<GCodePressureEqualizer>   O_OBJECT_SLIC3R_T
-
 BridgeDetector*            O_OBJECT_SLIC3R
 Ref<BridgeDetector>        O_OBJECT_SLIC3R_T
 Clone<BridgeDetector>      O_OBJECT_SLIC3R_T
@@ -229,7 +210,24 @@ PrintObjectSupportMaterial*       O_OBJECT_SLIC3R
 Ref<PrintObjectSupportMaterial>   O_OBJECT_SLIC3R_T
 Clone<PrintObjectSupportMaterial> O_OBJECT_SLIC3R_T
 
-GLVertexArray*             O_OBJECT_SLIC3R
+AppConfig*	                O_OBJECT_SLIC3R
+Ref<AppConfig>         		O_OBJECT_SLIC3R_T
+
+GLShader*                  	O_OBJECT_SLIC3R
+Ref<GLShader>              	O_OBJECT_SLIC3R_T
+GLVolume*                  	O_OBJECT_SLIC3R
+Ref<GLVolume>              	O_OBJECT_SLIC3R_T
+GLVolumeCollection*        	O_OBJECT_SLIC3R
+Ref<GLVolumeCollection>    	O_OBJECT_SLIC3R_T
+
+Preset*	                	O_OBJECT_SLIC3R
+Ref<Preset>                	O_OBJECT_SLIC3R_T
+PresetCollection*	      	O_OBJECT_SLIC3R
+Ref<PresetCollection>      	O_OBJECT_SLIC3R_T
+PresetBundle*	    		O_OBJECT_SLIC3R
+Ref<PresetBundle>    		O_OBJECT_SLIC3R_T
+PresetHints*	    		O_OBJECT_SLIC3R
+Ref<PresetHints>    		O_OBJECT_SLIC3R_T
 
 Axis                  T_UV
 ExtrusionLoopRole     T_UV

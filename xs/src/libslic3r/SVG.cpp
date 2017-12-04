@@ -1,6 +1,8 @@
 #include "SVG.hpp"
 #include <iostream>
 
+#include <boost/nowide/cstdio.hpp>
+
 #define COORD(x) ((float)unscale((x))*10)
 
 namespace Slic3r {
@@ -8,7 +10,7 @@ namespace Slic3r {
 bool SVG::open(const char* afilename)
 {
     this->filename = afilename;
-    this->f = fopen(afilename, "w");
+    this->f = boost::nowide::fopen(afilename, "w");
     if (this->f == NULL)
         return false;
     fprintf(this->f,
@@ -27,7 +29,7 @@ bool SVG::open(const char* afilename, const BoundingBox &bbox, const coord_t bbo
     this->filename = afilename;
     this->origin   = bbox.min - Point(bbox_offset, bbox_offset);
     this->flipY    = aflipY;
-    this->f        = ::fopen(afilename, "w");
+    this->f        = boost::nowide::fopen(afilename, "w");
     if (f == NULL)
         return false;
     float w = COORD(bbox.max.x - bbox.min.x + 2 * bbox_offset);
@@ -342,6 +344,30 @@ void SVG::export_expolygons(const char *path, const BoundingBox &bbox, const Sli
     SVG svg(path, bbox);
     svg.draw(expolygons);
     svg.draw_outline(expolygons, stroke_outer, stroke_holes, stroke_width);
+    svg.Close();
+}
+
+void SVG::export_expolygons(const char *path, const std::vector<std::pair<Slic3r::ExPolygons, ExPolygonAttributes>> &expolygons_with_attributes)
+{
+    if (expolygons_with_attributes.empty())
+        return;
+
+    BoundingBox bbox = get_extents(expolygons_with_attributes.front().first);
+    for (size_t i = 0; i < expolygons_with_attributes.size(); ++ i)
+        bbox.merge(get_extents(expolygons_with_attributes[i].first));
+
+    SVG svg(path, bbox);
+    for (const auto &exp_with_attr : expolygons_with_attributes)
+        svg.draw(exp_with_attr.first, exp_with_attr.second.color_fill, exp_with_attr.second.fill_opacity);
+    for (const auto &exp_with_attr : expolygons_with_attributes) {
+        std::string color_contour = exp_with_attr.second.color_contour;
+        if (color_contour.empty())
+            color_contour = exp_with_attr.second.color_fill;
+        std::string color_holes = exp_with_attr.second.color_holes;
+        if (color_holes.empty())
+            color_holes = color_contour;
+        svg.draw_outline(exp_with_attr.first, color_contour, color_holes, exp_with_attr.second.outline_width);
+    }
     svg.Close();
 }
 

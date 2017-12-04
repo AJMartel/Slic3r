@@ -22,10 +22,9 @@
     void clip_end(double distance);
     void simplify(double tolerance);
     double length();
-    bool is_perimeter();
-    bool is_infill();
-    bool is_solid_infill();
-    bool is_bridge();
+    ExtrusionRole role() const;
+    bool is_bridge()
+        %code{% RETVAL = is_bridge(THIS->role()); %};
     Polygons polygons_covered_by_width();
     Polygons polygons_covered_by_spacing();
 %{
@@ -54,16 +53,6 @@ ExtrusionPath::polyline(...)
             from_SV_check(ST(1), &THIS->polyline);
         }
         RETVAL = &(THIS->polyline);
-    OUTPUT:
-        RETVAL
-
-ExtrusionRole
-ExtrusionPath::role(...)
-    CODE:
-        if (items > 1) {
-            THIS->role = (ExtrusionRole)SvUV(ST(1));
-        }
-        RETVAL = THIS->role;
     OUTPUT:
         RETVAL
 
@@ -143,6 +132,7 @@ _constant()
     EXTR_ROLE_SKIRT                        = erSkirt
     EXTR_ROLE_SUPPORTMATERIAL              = erSupportMaterial
     EXTR_ROLE_SUPPORTMATERIAL_INTERFACE    = erSupportMaterialInterface
+    EXTR_ROLE_MIXED                        = erMixed
   PROTOTYPE:
   CODE:
     RETVAL = ix;

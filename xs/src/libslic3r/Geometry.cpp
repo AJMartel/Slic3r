@@ -211,24 +211,27 @@ convex_hull(Points points)
     
     int n = points.size(), k = 0;
     Polygon hull;
-    hull.points.resize(2*n);
 
-    // Build lower hull
-    for (int i = 0; i < n; i++) {
-        while (k >= 2 && points[i].ccw(hull.points[k-2], hull.points[k-1]) <= 0) k--;
-        hull.points[k++] = points[i];
+    if (n >= 3) {
+        hull.points.resize(2*n);
+
+        // Build lower hull
+        for (int i = 0; i < n; i++) {
+            while (k >= 2 && points[i].ccw(hull.points[k-2], hull.points[k-1]) <= 0) k--;
+            hull.points[k++] = points[i];
+        }
+
+        // Build upper hull
+        for (int i = n-2, t = k+1; i >= 0; i--) {
+            while (k >= t && points[i].ccw(hull.points[k-2], hull.points[k-1]) <= 0) k--;
+            hull.points[k++] = points[i];
+        }
+
+        hull.points.resize(k);
+        
+        assert( hull.points.front().coincides_with(hull.points.back()) );
+        hull.points.pop_back();
     }
-
-    // Build upper hull
-    for (int i = n-2, t = k+1; i >= 0; i--) {
-        while (k >= t && points[i].ccw(hull.points[k-2], hull.points[k-1]) <= 0) k--;
-        hull.points[k++] = points[i];
-    }
-
-    hull.points.resize(k);
-    
-    assert( hull.points.front().coincides_with(hull.points.back()) );
-    hull.points.pop_back();
     
     return hull;
 }
@@ -317,12 +320,6 @@ rad2deg_dir(double angle)
     return rad2deg(angle);
 }
 
-double
-deg2rad(double angle)
-{
-    return PI * angle / 180.0;
-}
-
 void
 simplify_polygons(const Polygons &polygons, double tolerance, Polygons* retval)
 {
@@ -334,7 +331,7 @@ simplify_polygons(const Polygons &polygons, double tolerance, Polygons* retval)
         p.points.pop_back();
         pp.push_back(p);
     }
-    Slic3r::simplify_polygons(pp, retval);
+    *retval = Slic3r::simplify_polygons(pp);
 }
 
 double
@@ -989,6 +986,13 @@ MedialAxis::process_edge_neighbors(const VD::edge_type* edge, ThickPolyline* pol
 bool
 MedialAxis::validate_edge(const VD::edge_type* edge)
 {
+    // prevent overflows and detect almost-infinite edges
+    if (std::abs(edge->vertex0()->x()) > double(CLIPPER_MAX_COORD_UNSCALED) || 
+        std::abs(edge->vertex0()->y()) > double(CLIPPER_MAX_COORD_UNSCALED) || 
+        std::abs(edge->vertex1()->x()) > double(CLIPPER_MAX_COORD_UNSCALED) ||
+        std::abs(edge->vertex1()->y()) > double(CLIPPER_MAX_COORD_UNSCALED))
+        return false;
+
     // construct the line representing this edge of the Voronoi diagram
     const Line line(
         Point( edge->vertex0()->x(), edge->vertex0()->y() ),

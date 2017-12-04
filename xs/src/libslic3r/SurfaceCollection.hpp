@@ -9,18 +9,24 @@ namespace Slic3r {
 
 class SurfaceCollection
 {
-    public:
+public:
     Surfaces surfaces;
     
     SurfaceCollection() {};
-    SurfaceCollection(const Surfaces &_surfaces)
-        : surfaces(_surfaces) {};
+    SurfaceCollection(const Surfaces &surfaces) : surfaces(surfaces) {};
+    SurfaceCollection(Surfaces &&surfaces) : surfaces(std::move(surfaces)) {};
     operator Polygons() const;
     operator ExPolygons() const;
     void simplify(double tolerance);
     void group(std::vector<SurfacesPtr> *retval);
-    template <class T> bool any_internal_contains(const T &item) const;
-    template <class T> bool any_bottom_contains(const T &item) const;
+    template <class T> bool any_internal_contains(const T &item) const {
+        for (const Surface &surface : this->surfaces) if (surface.is_internal() && surface.expolygon.contains(item)) return true;
+        return false;
+    }
+    template <class T> bool any_bottom_contains(const T &item) const {
+        for (const Surface &surface : this->surfaces) if (surface.is_bottom() && surface.expolygon.contains(item)) return true;
+        return false;
+    }
     SurfacesPtr filter_by_type(const SurfaceType type);
     SurfacesPtr filter_by_types(const SurfaceType *types, int ntypes);
     void keep_type(const SurfaceType type);

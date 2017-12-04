@@ -30,16 +30,13 @@ MultiPoint::translate(const Point &vector)
     this->translate(vector.x, vector.y);
 }
 
-void
-MultiPoint::rotate(double angle)
+void MultiPoint::rotate(double cos_angle, double sin_angle)
 {
-    double s = sin(angle);
-    double c = cos(angle);
-    for (Points::iterator it = points.begin(); it != points.end(); ++it) {
-        double cur_x = (double)it->x;
-        double cur_y = (double)it->y;
-        it->x = (coord_t)round(c * cur_x - s * cur_y);
-        it->y = (coord_t)round(c * cur_y + s * cur_x);
+    for (Point &pt : this->points) {
+        double cur_x = double(pt.x);
+        double cur_y = double(pt.y);
+        pt.x = coord_t(round(cos_angle * cur_x - sin_angle * cur_y));
+        pt.y = coord_t(round(cos_angle * cur_y + sin_angle * cur_x));
     }
 }
 
@@ -138,6 +135,29 @@ MultiPoint::intersection(const Line& line, Point* intersection) const
         if (it->intersection(line, intersection)) return true;
     }
     return false;
+}
+
+bool MultiPoint::first_intersection(const Line& line, Point* intersection) const
+{
+    bool   found = false;
+    double dmin  = 0.;
+    for (const Line &l : this->lines()) {
+        Point ip;
+        if (l.intersection(line, &ip)) {
+            if (! found) {
+                found = true;
+                dmin = ip.distance_to(line.a);
+                *intersection = ip;
+            } else {
+                double d = ip.distance_to(line.a);
+                if (d < dmin) {
+                    dmin = d;
+                    *intersection = ip;
+                }
+            }
+        }
+    }
+    return found;
 }
 
 std::string

@@ -27,17 +27,24 @@ typedef std::vector<Pointf3> Pointf3s;
 
 class Point
 {
-    public:
+public:
+    typedef coord_t coord_type;
     coord_t x;
     coord_t y;
     Point(coord_t _x = 0, coord_t _y = 0): x(_x), y(_y) {};
     Point(int _x, int _y): x(_x), y(_y) {};
-    Point(long long _x, long long _y): x(_x), y(_y) {};  // for Clipper
+    Point(long long _x, long long _y): x(coord_t(_x)), y(coord_t(_y)) {};  // for Clipper
     Point(double x, double y);
-    static Point new_scale(coordf_t x, coordf_t y) {
-        return Point(scale_(x), scale_(y));
-    };
+    static Point new_scale(coordf_t x, coordf_t y) { return Point(coord_t(scale_(x)), coord_t(scale_(y))); }
+
     bool operator==(const Point& rhs) const { return this->x == rhs.x && this->y == rhs.y; }
+    bool operator!=(const Point& rhs) const { return ! (*this == rhs); }
+    bool operator<(const Point& rhs) const { return this->x < rhs.x || (this->x == rhs.x && this->y < rhs.y); }
+
+    Point& operator+=(const Point& rhs) { this->x += rhs.x; this->y += rhs.y; return *this; }
+    Point& operator-=(const Point& rhs) { this->x -= rhs.x; this->y -= rhs.y; return *this; }
+    Point& operator*=(const coord_t& rhs) { this->x *= rhs; this->y *= rhs;   return *this; }
+
     std::string wkt() const;
     std::string dump_perl() const;
     void scale(double factor);
@@ -52,9 +59,7 @@ class Point
     int nearest_point_index(const Points &points) const;
     int nearest_point_index(const PointConstPtrs &points) const;
     int nearest_point_index(const PointPtrs &points) const;
-    size_t nearest_waypoint_index(const Points &points, const Point &point) const;
     bool nearest_point(const Points &points, Point* point) const;
-    bool nearest_waypoint(const Points &points, const Point &dest, Point* point) const;
     double distance_to(const Point &point) const { return sqrt(distance_to_sq(point)); }
     double distance_to_sq(const Point &point) const { double dx = double(point.x - this->x); double dy = double(point.y - this->y); return dx*dx + dy*dy; }
     double distance_to(const Line &line) const;
@@ -71,6 +76,8 @@ class Point
 inline Point operator+(const Point& point1, const Point& point2) { return Point(point1.x + point2.x, point1.y + point2.y); }
 inline Point operator-(const Point& point1, const Point& point2) { return Point(point1.x - point2.x, point1.y - point2.y); }
 inline Point operator*(double scalar, const Point& point2) { return Point(scalar * point2.x, scalar * point2.y); }
+inline int64_t cross(const Point &v1, const Point &v2) { return int64_t(v1.x) * int64_t(v2.y) - int64_t(v1.y) * int64_t(v2.x); }
+inline int64_t dot(const Point &v1, const Point &v2) { return int64_t(v1.x) * int64_t(v2.x) + int64_t(v1.y) * int64_t(v2.y); }
 
 // To be used by std::unordered_map, std::unordered_multimap and friends.
 struct PointHash {
@@ -173,16 +180,24 @@ private:
 
 class Point3 : public Point
 {
-    public:
+public:
     coord_t z;
     explicit Point3(coord_t _x = 0, coord_t _y = 0, coord_t _z = 0): Point(_x, _y), z(_z) {};
+    static Point3 new_scale(coordf_t x, coordf_t y, coordf_t z) { return Point3(coord_t(scale_(x)), coord_t(scale_(y)), coord_t(scale_(z))); }
+    bool operator==(const Point3 &rhs) const { return this->x == rhs.x && this->y == rhs.y && this->z == rhs.z; }
+    bool operator!=(const Point3 &rhs) const { return ! (*this == rhs); }
+private:
+    // Hide the following inherited methods:
+    bool operator==(const Point &rhs);
+    bool operator!=(const Point &rhs);
 };
 
 std::ostream& operator<<(std::ostream &stm, const Pointf &pointf);
 
 class Pointf
 {
-    public:
+public:
+    typedef coordf_t coord_type;
     coordf_t x;
     coordf_t y;
     explicit Pointf(coordf_t _x = 0, coordf_t _y = 0): x(_x), y(_y) {};
@@ -201,6 +216,14 @@ class Pointf
     void rotate(double angle, const Pointf &center);
     Pointf negative() const;
     Vectorf vector_to(const Pointf &point) const;
+    
+    Pointf& operator+=(const Pointf& rhs) { this->x += rhs.x; this->y += rhs.y; return *this; }
+    Pointf& operator-=(const Pointf& rhs) { this->x -= rhs.x; this->y -= rhs.y; return *this; }
+    Pointf& operator*=(const coordf_t& rhs) { this->x *= rhs; this->y *= rhs;   return *this; }
+
+    bool operator==(const Pointf &rhs) const { return this->x == rhs.x && this->y == rhs.y; }
+    bool operator!=(const Pointf &rhs) const { return ! (*this == rhs); }
+    bool operator< (const Pointf& rhs) const { return this->x < rhs.x || (this->x == rhs.x && this->y < rhs.y); }
 };
 
 inline Pointf operator+(const Pointf& point1, const Pointf& point2) { return Pointf(point1.x + point2.x, point1.y + point2.y); }
@@ -210,10 +233,12 @@ inline Pointf operator*(const Pointf& point2, double scalar) { return Pointf(sca
 inline coordf_t cross(const Pointf &v1, const Pointf &v2) { return v1.x * v2.y - v1.y * v2.x; }
 inline coordf_t dot(const Pointf &v1, const Pointf &v2) { return v1.x * v2.x + v1.y * v2.y; }
 inline coordf_t dot(const Pointf &v) { return v.x * v.x + v.y * v.y; }
+inline double length(const Vectorf &v) { return sqrt(dot(v)); }
+inline double l2(const Vectorf &v) { return dot(v); }
 
 class Pointf3 : public Pointf
 {
-    public:
+public:
     coordf_t z;
     explicit Pointf3(coordf_t _x = 0, coordf_t _y = 0, coordf_t _z = 0): Pointf(_x, _y), z(_z) {};
     static Pointf3 new_unscale(coord_t x, coord_t y, coord_t z) {
@@ -225,7 +250,20 @@ class Pointf3 : public Pointf
     double distance_to(const Pointf3 &point) const;
     Pointf3 negative() const;
     Vectorf3 vector_to(const Pointf3 &point) const;
+
+    bool operator==(const Pointf3 &rhs) const { return this->x == rhs.x && this->y == rhs.y && this->z == rhs.z; }
+    bool operator!=(const Pointf3 &rhs) const { return ! (*this == rhs); }
+
+private:
+    // Hide the following inherited methods:
+    bool operator==(const Pointf &rhs);
+    bool operator!=(const Pointf &rhs);
 };
+
+template<typename TO> inline TO convert_to(const Point &src) { return TO(typename TO::coord_type(src.x), typename TO::coord_type(src.y)); }
+template<typename TO> inline TO convert_to(const Pointf &src) { return TO(typename TO::coord_type(src.x), typename TO::coord_type(src.y)); }
+template<typename TO> inline TO convert_to(const Point3 &src) { return TO(typename TO::coord_type(src.x), typename TO::coord_type(src.y), typename TO::coord_type(src.z)); }
+template<typename TO> inline TO convert_to(const Pointf3 &src) { return TO(typename TO::coord_type(src.x), typename TO::coord_type(src.y), typename TO::coord_type(src.z)); }
 
 } // namespace Slic3r
 

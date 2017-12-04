@@ -52,18 +52,24 @@ sub new {
     });
     EVT_KEY_DOWN($canvas, sub {
         my ($s, $event) = @_;
-        my $key = $event->GetKeyCode;
-        if ($key == ord('D') || $key == WXK_LEFT) {
-            # Keys: 'D' or WXK_LEFT
-            $slider->SetValue($slider->GetValue - 1);
-            $self->set_z($self->{layers_z}[$slider->GetValue]);
-        } elsif ($key == ord('U') || $key == WXK_RIGHT) {
-            # Keys: 'U' or WXK_RIGHT
-            $slider->SetValue($slider->GetValue + 1);
-            $self->set_z($self->{layers_z}[$slider->GetValue]);
-        } elsif ($key >= ord('1') && $key <= ord('3')) {
-            # Keys: '1' to '3'
-            $canvas->set_simulation_mode($key - ord('1'));
+        if ($event->HasModifiers) {
+            $event->Skip;
+        } else {
+            my $key = $event->GetKeyCode;
+            if ($key == ord('D') || $key == WXK_LEFT) {
+                # Keys: 'D' or WXK_LEFT
+                $slider->SetValue($slider->GetValue - 1);
+                $self->set_z($self->{layers_z}[$slider->GetValue]);
+            } elsif ($key == ord('U') || $key == WXK_RIGHT) {
+                # Keys: 'U' or WXK_RIGHT
+                $slider->SetValue($slider->GetValue + 1);
+                $self->set_z($self->{layers_z}[$slider->GetValue]);
+            } elsif ($key >= ord('1') && $key <= ord('3')) {
+                # Keys: '1' to '3'
+                $canvas->set_simulation_mode($key - ord('1'));
+            } else {
+                $event->Skip;
+            }
         }
     });
 
@@ -129,7 +135,7 @@ use OpenGL qw(:glconstants :glfunctions :glufunctions :gluconstants);
 use base qw(Wx::GLCanvas Class::Accessor);
 use Wx::GLCanvas qw(:all);
 use List::Util qw(min max first);
-use Slic3r::Geometry qw(scale unscale epsilon X Y);
+use Slic3r::Geometry qw(scale epsilon X Y);
 use Slic3r::Print::State ':steps';
 
 __PACKAGE__->mk_accessors(qw(
@@ -475,7 +481,6 @@ sub Render {
             if ($layer->isa('Slic3r::Layer::Support')) {
                 $self->color([0, 0, 0]);
                 $self->_draw($object, $print_z, $_) for @{$layer->support_fills};
-                $self->_draw($object, $print_z, $_) for @{$layer->support_interface_fills};
             }
         }
     }
@@ -578,22 +583,12 @@ sub InitGL {
 
 sub GetContext {
     my ($self) = @_;
-    
-    if (Wx::wxVERSION >= 2.009) {
-        return $self->{context} ||= Wx::GLContext->new($self);
-    } else {
-        return $self->SUPER::GetContext;
-    }
+    return $self->{context} ||= Wx::GLContext->new($self);
 }
  
 sub SetCurrent {
     my ($self, $context) = @_;
-    
-    if (Wx::wxVERSION >= 2.009) {
-        return $self->SUPER::SetCurrent($context);
-    } else {
-        return $self->SUPER::SetCurrent;
-    }
+    return $self->SUPER::SetCurrent($context);
 }
 
 sub Resize {

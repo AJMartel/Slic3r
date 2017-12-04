@@ -26,7 +26,7 @@ struct SlicingParameters
         const PrintConfig       &print_config, 
         const PrintObjectConfig &object_config,
         coordf_t                 object_height,
-        const std::set<size_t>  &object_extruders);
+        const std::vector<unsigned int> &object_extruders);
 
     // Has any raft layers?
     bool        has_raft() const { return raft_layers() > 0; }
@@ -52,6 +52,11 @@ struct SlicingParameters
 	// The regular layer height, applied for all but the first layer, if not overridden by layer ranges
 	// or by the variable layer thickness table.
     coordf_t    layer_height;
+    // Minimum / maximum layer height, to be used for the automatic adaptive layer height algorithm,
+    // or by an interactive layer height editor.
+    coordf_t    min_layer_height;
+    coordf_t    max_layer_height;
+    coordf_t    max_suport_layer_height;
 
     // First layer height of the print, this may be used for the first layer of the raft
     // or for the first layer of the print.
@@ -75,11 +80,6 @@ struct SlicingParameters
     // Gap when placing object over support.
     coordf_t    gap_support_object;
 
-    // Minimum / maximum layer height, to be used for the automatic adaptive layer height algorithm,
-    // or by an interactive layer height editor.
-    coordf_t    min_layer_height;
-    coordf_t    max_layer_height;
-
     // Bottom and top of the printed object.
     // If printed without a raft, object_print_z_min = 0 and object_print_z_max = object height.
     // Otherwise object_print_z_min is equal to the raft height.
@@ -90,6 +90,32 @@ struct SlicingParameters
     coordf_t 	object_print_z_min;
     coordf_t 	object_print_z_max;
 };
+
+// The two slicing parameters lead to the same layering as long as the variable layer thickness is not in action.
+inline bool equal_layering(const SlicingParameters &sp1, const SlicingParameters &sp2)
+{
+    return  sp1.base_raft_layers                    == sp2.base_raft_layers                     &&
+            sp1.interface_raft_layers               == sp2.interface_raft_layers                &&
+            sp1.base_raft_layer_height              == sp2.base_raft_layer_height               &&
+            sp1.interface_raft_layer_height         == sp2.interface_raft_layer_height          &&
+            sp1.contact_raft_layer_height           == sp2.contact_raft_layer_height            &&
+            sp1.contact_raft_layer_height_bridging  == sp2.contact_raft_layer_height_bridging   &&
+            sp1.layer_height                        == sp2.layer_height                         &&
+            sp1.min_layer_height                    == sp2.min_layer_height                     &&
+            sp1.max_layer_height                    == sp2.max_layer_height                     &&
+//            sp1.max_suport_layer_height             == sp2.max_suport_layer_height              &&
+            sp1.first_print_layer_height            == sp2.first_print_layer_height             &&
+            sp1.first_object_layer_height           == sp2.first_object_layer_height            &&
+            sp1.first_object_layer_bridging         == sp2.first_object_layer_bridging          &&
+            sp1.soluble_interface                   == sp2.soluble_interface                    &&
+            sp1.gap_raft_object                     == sp2.gap_raft_object                      &&
+            sp1.gap_object_support                  == sp2.gap_object_support                   &&
+            sp1.gap_support_object                  == sp2.gap_support_object                   &&
+            sp1.raft_base_top_z                     == sp2.raft_base_top_z                      &&
+            sp1.raft_interface_top_z                == sp2.raft_interface_top_z                 &&
+            sp1.raft_contact_top_z                  == sp2.raft_contact_top_z                   &&
+            sp1.object_print_z_min                  == sp2.object_print_z_min;
+}
 
 typedef std::pair<coordf_t,coordf_t> t_layer_height_range;
 typedef std::map<t_layer_height_range,coordf_t> t_layer_height_ranges;

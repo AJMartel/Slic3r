@@ -7,12 +7,16 @@ use warnings;
 BEGIN {
     use FindBin;
     use lib "$FindBin::Bin/../lib";
+    use local::lib "$FindBin::Bin/../local-lib";
 }
 
 use File::Basename qw(basename);
 use Getopt::Long qw(:config no_auto_abbrev);
 use Slic3r;
 $|++;
+
+# Convert all parameters from the local code page to utf8 on Windows.
+@ARGV = map Slic3r::decode_path($_), @ARGV if $^O eq 'MSWin32';
 
 my %opt = ();
 {
@@ -25,12 +29,12 @@ my %opt = ();
 }
 
 {
-    my $model = Slic3r::Format::AMF->read_file($ARGV[0]);
+    my $model = Slic3r::Model->load_amf($ARGV[0]);
     my $output_file = $ARGV[0];
-    $output_file =~ s/\.amf(?:\.xml)?$/\.stl/i;
+    $output_file =~ s/\.[aA][mM][fF](?:\.[xX][mM][lL])?$/\.stl/;
     
     printf "Writing to %s\n", basename($output_file);
-    Slic3r::Format::STL->write_file($output_file, $model, binary => !$opt{ascii});
+    $model->store_stl($output_file, binary => !$opt{ascii});
 }
 
 

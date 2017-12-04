@@ -22,6 +22,8 @@ struct FillParams
         dont_adjust = true;
     }
 
+    bool        full_infill() const { return density > 0.9999f; }
+
     // Fill density, fraction in <0, 1>
     float       density;
 
@@ -46,6 +48,8 @@ public:
     coordf_t    z;
     // in unscaled coordinates
     coordf_t    spacing;
+    // infill / perimeter overlap, in unscaled coordinates
+    coordf_t    overlap;
     // in radians, ccw, 0 = East
     float       angle;
     // In scaled coordinates. Maximum lenght of a perimeter segment connecting two infill lines.
@@ -77,8 +81,10 @@ public:
 protected:
     Fill() :
         layer_id(size_t(-1)),
-        z(0.f),
-        spacing(0.f),
+        z(0.),
+        spacing(0.),
+        // Infill / perimeter overlap.
+        overlap(0.),
         // Initial angle is undefined.
         angle(FLT_MAX),
         link_max_length(0),
@@ -89,20 +95,18 @@ protected:
 
     // The expolygon may be modified by the method to avoid a copy.
     virtual void    _fill_surface_single(
-        const FillParams                &params, 
-        unsigned int                     thickness_layers,
-        const std::pair<float, Point>   &direction, 
-        ExPolygon                       &expolygon, 
-        Polylines                       &polylines_out) {}
+        const FillParams                & /* params */, 
+        unsigned int                      /* thickness_layers */,
+        const std::pair<float, Point>   & /* direction */, 
+        ExPolygon                       & /* expolygon */, 
+        Polylines                       & /* polylines_out */) {};
 
-    static coord_t  _adjust_solid_spacing(const coord_t width, const coord_t distance);
-
-    virtual float _layer_angle(size_t idx) const { 
-        bool odd = idx & 1;
-        return (idx & 1) ? float(M_PI/2.) : 0;
-    }
+    virtual float _layer_angle(size_t idx) const { return (idx & 1) ? float(M_PI/2.) : 0; }
 
     virtual std::pair<float, Point> _infill_direction(const Surface *surface) const;
+
+public:
+    static coord_t  _adjust_solid_spacing(const coord_t width, const coord_t distance);
 
     // Align a coordinate to a grid. The coordinate may be negative,
     // the aligned value will never be bigger than the original one.

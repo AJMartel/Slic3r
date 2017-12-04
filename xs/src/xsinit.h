@@ -1,6 +1,11 @@
 #ifndef _xsinit_h_
 #define _xsinit_h_
 
+#ifdef _MSC_VER
+// Disable some obnoxious warnings given by Visual Studio with the default warning level 4.
+#pragma warning(disable: 4100 4127 4189 4244 4267 4700 4702 4800)
+#endif
+
 // undef some macros set by Perl which cause compilation errors on Win32
 #undef read
 #undef seekdir
@@ -26,6 +31,7 @@
 #undef socketpair
 #undef recvfrom
 #undef sendto
+#undef pause
 
 // these need to be included early for Win32 (listing it in Build.PL is not enough)
 #include <ostream>
@@ -48,6 +54,8 @@ extern "C" {
 #ifdef _MSC_VER
     // Undef some of the macros set by Perl <xsinit.h>, which cause compilation errors on Win32
     #undef connect
+    #undef link
+    #undef unlink
     #undef seek
     #undef send
     #undef write
@@ -153,8 +161,6 @@ bool from_SV(SV* point_sv, Pointf* point);
 bool from_SV_check(SV* point_sv, Pointf* point);
 void from_SV_check(SV* surface_sv, Surface* THIS);
 SV* to_SV(TriangleMesh* THIS);
-SV* polynode_children_2_perl(const ClipperLib::PolyNode& node);
-SV* polynode2perl(const ClipperLib::PolyNode& node);
 
 }
 
@@ -166,6 +172,10 @@ SV* polynode2perl(const ClipperLib::PolyNode& node);
     #define croak(...) confess_at(__FILE__, __LINE__, __func__, __VA_ARGS__)
 #endif
 #endif
+
+// Defined in wxPerlIface.cpp
+// Return a pointer to the associated wxWidgets object instance given by classname.
+extern void* wxPli_sv_2_object( pTHX_ SV* scalar, const char* classname );
 
 using namespace Slic3r;
 

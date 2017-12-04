@@ -7,6 +7,7 @@ use warnings;
 BEGIN {
     use FindBin;
     use lib "$FindBin::Bin/../lib";
+    use local::lib "$FindBin::Bin/../local-lib";
 }
 
 use Getopt::Long qw(:config no_auto_abbrev);
@@ -28,9 +29,6 @@ my %opt = ();
 
 {
     my $model = Slic3r::Model->read_from_file($ARGV[0]);
-    
-    # make sure all objects have at least one defined instance
-    $model->add_default_instances;
     $_->center_around_origin for @{$model->objects};  # and align to Z = 0
     
     my $app = Slic3r::ViewMesh->new;

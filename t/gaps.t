@@ -5,25 +5,25 @@ use warnings;
 BEGIN {
     use FindBin;
     use lib "$FindBin::Bin/../lib";
+    use local::lib "$FindBin::Bin/../local-lib";
 }
 
 use List::Util qw(first);
 use Slic3r;
 use Slic3r::Flow ':roles';
 use Slic3r::Geometry qw(PI scale unscale convex_hull);
-use Slic3r::Geometry::Clipper qw();
 use Slic3r::Surface ':types';
 use Slic3r::Test;
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('skirts', 0);
     $config->set('perimeter_speed', 66);
     $config->set('external_perimeter_speed', 66);
     $config->set('small_perimeter_speed', 66);
     $config->set('gap_fill_speed', 99);
     $config->set('perimeters', 1);
-    $config->set('cooling', 0);                     # to prevent speeds from being altered
+    $config->set('cooling', [ 0 ]);                 # to prevent speeds from being altered
     $config->set('first_layer_speed', '100%');      # to prevent speeds from being altered
     $config->set('perimeter_extrusion_width', 0.35);
     $config->set('first_layer_extrusion_width', 0.35);

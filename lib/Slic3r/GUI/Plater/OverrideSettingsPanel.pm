@@ -16,12 +16,25 @@ use constant ICON_MATERIAL      => 0;
 use constant ICON_SOLIDMESH     => 1;
 use constant ICON_MODIFIERMESH  => 2;
 
+my %icons = (
+    'Advanced'              => 'wand.png',
+    'Extruders'             => 'funnel.png',
+    'Extrusion Width'       => 'funnel.png',
+    'Infill'                => 'infill.png',
+    'Layers and Perimeters' => 'layers.png',
+    'Skirt and brim'        => 'box.png',
+    'Speed'                 => 'time.png',
+    'Speed > Acceleration'  => 'time.png',
+    'Support material'      => 'building.png',
+);
+
 sub new {
-    my $class = shift;
-    my ($parent, %params) = @_;
+    my ($class, $parent, %params) = @_;
     my $self = $class->SUPER::new($parent, -1, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL);
+    # C++ class Slic3r::DynamicPrintConfig, initially empty.
     $self->{default_config} = Slic3r::Config->new;
     $self->{config} = Slic3r::Config->new;
+    # On change callback.
     $self->{on_change} = $params{on_change};
     $self->{fixed_options} = {};
     
@@ -33,18 +46,33 @@ sub new {
     # option selector
     {
         # create the button
-        my $btn = $self->{btn_add} = Wx::BitmapButton->new($self, -1, Wx::Bitmap->new($Slic3r::var->("add.png"), wxBITMAP_TYPE_PNG),
+        my $btn = $self->{btn_add} = Wx::BitmapButton->new($self, -1, Wx::Bitmap->new(Slic3r::var("add.png"), wxBITMAP_TYPE_PNG),
             wxDefaultPosition, wxDefaultSize, Wx::wxBORDER_NONE);
         EVT_LEFT_DOWN($btn, sub {
             my $menu = Wx::Menu->new;
+            # create category submenus
+            my %categories = ();  # category => submenu
             foreach my $opt_key (@{$self->{options}}) {
-                my $id = &Wx::NewId();
-                $menu->Append($id, $self->{option_labels}{$opt_key});
-                EVT_MENU($menu, $id, sub {
+                if (my $cat = $Slic3r::Config::Options->{$opt_key}{category}) {
+                    $categories{$cat} //= Wx::Menu->new;
+                }
+            }
+            # append submenus to main menu
+            my @categories = ('Layers and Perimeters', 'Infill', 'Support material', 'Speed', 'Extruders', 'Extrusion Width', 'Advanced');
+            #foreach my $cat (sort keys %categories) {
+            foreach my $cat (@categories) {
+                wxTheApp->append_submenu($menu, $cat, "", $categories{$cat}, undef, $icons{$cat});
+            }
+            # append options to submenus
+            foreach my $opt_key (@{$self->{options}}) {
+                my $cat = $Slic3r::Config::Options->{$opt_key}{category} or next;
+                my $cb = sub {
                     $self->{config}->set($opt_key, $self->{default_config}->get($opt_key));
                     $self->update_optgroup;
-                    $self->{on_change}->() if $self->{on_change};
-                });
+                    $self->{on_change}->($opt_key) if $self->{on_change};
+                };
+                wxTheApp->append_menu_item($categories{$cat}, $self->{option_labels}{$opt_key},
+                    $Slic3r::Config::Options->{$opt_key}{tooltip}, $cb);
             }
             $self->PopupMenu($menu, $btn->GetPosition);
             $menu->Destroy;
@@ -77,11 +105,8 @@ sub set_config {
 
 sub set_opt_keys {
     my ($self, $opt_keys) = @_;
-    
     # sort options by category+label
-    $self->{option_labels} = {
-        map { $_ => sprintf('%s > %s', $Slic3r::Config::Options->{$_}{category}, $Slic3r::Config::Options->{$_}{full_label} // $Slic3r::Config::Options->{$_}{label}) } @$opt_keys
-    };
+    $self->{option_labels} = { map { $_ => $Slic3r::Config::Options->{$_}{full_label} // $Slic3r::Config::Options->{$_}{label} } @$opt_keys };
     $self->{options} = [ sort { $self->{option_labels}{$a} cmp $self->{option_labels}{$b} } @$opt_keys ];
 }
 
@@ -121,7 +146,7 @@ sub update_optgroup {
                 # disallow deleting fixed options
                 return undef if $self->{fixed_options}{$opt_key};
                 
-                my $btn = Wx::BitmapButton->new($self, -1, Wx::Bitmap->new($Slic3r::var->("delete.png"), wxBITMAP_TYPE_PNG),
+                my $btn = Wx::BitmapButton->new($self, -1, Wx::Bitmap->new(Slic3r::var("delete.png"), wxBITMAP_TYPE_PNG),
                     wxDefaultPosition, wxDefaultSize, Wx::wxBORDER_NONE);
                 EVT_BUTTON($self, $btn, sub {
                     $self->{config}->erase($opt_key);

@@ -30,7 +30,8 @@
 ** THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifdef SLIC3R_GUI
+#if 1
+// #ifdef SLIC3R_GUI
 
 #include <GL/glew.h>
 
@@ -174,7 +175,7 @@ void* NSGLGetProcAddress (const GLubyte *name)
 #if defined(GLEW_REGAL)
 #  define glewGetProcAddress(name) regalGetProcAddress((const GLchar *) name)
 #elif defined(_WIN32)
-#  define glewGetProcAddress(name) ((LPCSTR)name)
+#  define glewGetProcAddress(name) wglGetProcAddress((LPCSTR)name)
 #elif defined(__APPLE__) && !defined(GLEW_APPLE_GLX)
 #  define glewGetProcAddress(name) NSGLGetProcAddress(name)
 #elif defined(__sgi) || defined(__sun) || defined(__HAIKU__)
@@ -12105,8 +12106,10 @@ GLenum GLEWAPIENTRY wglewInit (WGLEW_CONTEXT_ARG_DEF_LIST)
       extStart = (const GLubyte*)"";
     else
       extStart = (const GLubyte*)_wglewGetExtensionsStringEXT();
-  else
-    extStart = (const GLubyte*)_wglewGetExtensionsStringARB(wglGetCurrentDC());
+  else {
+    HDC dc = wglGetCurrentDC(); 
+    extStart = (const GLubyte*)_wglewGetExtensionsStringARB(dc);
+  }
   extEnd = extStart + _glewStrLen(extStart);
   /* initialize extensions */
   crippled = _wglewGetExtensionsStringARB == NULL && _wglewGetExtensionsStringEXT == NULL;

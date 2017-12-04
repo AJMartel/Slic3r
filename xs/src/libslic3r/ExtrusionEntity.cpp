@@ -59,7 +59,7 @@ void ExtrusionPath::polygons_covered_by_spacing(Polygons &out, const float scale
 {
     // Instantiating the Flow class to get the line spacing.
     // Don't know the nozzle diameter, setting to zero. It shall not matter it shall be optimized out by the compiler.
-    Flow flow(this->width, this->height, 0.f, this->is_bridge());
+    Flow flow(this->width, this->height, 0.f, is_bridge(this->role()));
     polygons_append(out, offset(this->polyline, 0.5f * float(flow.scaled_spacing()) + scaled_epsilon));
 }
 
@@ -100,17 +100,17 @@ double ExtrusionMultiPath::min_mm3_per_mm() const
 
 Polyline ExtrusionMultiPath::as_polyline() const
 {
-    size_t len = 0;
-    for (size_t i_path = 0; i_path < paths.size(); ++ i_path) {
-        assert(! paths[i_path].polyline.points.empty());
-        assert(i_path == 0 || paths[i_path - 1].polyline.points.back() == paths[i_path].polyline.points.front());
-        len += paths[i_path].polyline.points.size();
-    }
-    // The connecting points between the segments are equal.
-    len -= paths.size() - 1;
-
     Polyline out;
-    if (len > 0) {
+    if (! paths.empty()) {
+        size_t len = 0;
+        for (size_t i_path = 0; i_path < paths.size(); ++ i_path) {
+            assert(! paths[i_path].polyline.points.empty());
+            assert(i_path == 0 || paths[i_path - 1].polyline.points.back() == paths[i_path].polyline.points.front());
+            len += paths[i_path].polyline.points.size();
+        }
+        // The connecting points between the segments are equal.
+        len -= paths.size() - 1;
+        assert(len > 0);
         out.points.reserve(len);
         out.points.push_back(paths.front().polyline.points.front());
         for (size_t i_path = 0; i_path < paths.size(); ++ i_path)
@@ -204,29 +204,45 @@ ExtrusionLoop::split_at_vertex(const Point &point)
     return false;
 }
 
-void
-ExtrusionLoop::split_at(const Point &point)
+// Splitting an extrusion loop, possibly made of multiple segments, some of the segments may be bridging.
+void ExtrusionLoop::split_at(const Point &point, bool prefer_non_overhang)
 {
-    if (this->paths.empty()) return;
+    if (this->paths.empty())
+        return;
     
-    // find the closest path and closest point belonging to that path
+    // Find the closest path and closest point belonging to that path. Avoid overhangs, if asked for.
     size_t path_idx = 0;
-    Point p = this->paths.front().first_point();
-    double min = point.distance_to(p);
-    for (ExtrusionPaths::const_iterator path = this->paths.begin(); path != this->paths.end(); ++path) {
-        Point p_tmp = point.projection_onto(path->polyline);
-        double dist = point.distance_to(p_tmp);
-        if (dist < min) {
-            p = p_tmp;
-            min = dist;
-            path_idx = path - this->paths.begin();
+    Point  p;
+    {
+        double min = std::numeric_limits<double>::max();
+        Point  p_non_overhang;
+        size_t path_idx_non_overhang = 0;
+        double min_non_overhang = std::numeric_limits<double>::max();
+        for (ExtrusionPaths::const_iterator path = this->paths.begin(); path != this->paths.end(); ++path) {
+            Point p_tmp = point.projection_onto(path->polyline);
+            double dist = point.distance_to(p_tmp);
+            if (dist < min) {
+                p = p_tmp;
+                min = dist;
+                path_idx = path - this->paths.begin();
+            } 
+            if (prefer_non_overhang && ! is_bridge(path->role()) && dist < min_non_overhang) {
+                p_non_overhang = p_tmp;
+                min_non_overhang = dist;
+                path_idx_non_overhang = path - this->paths.begin();
+            }
+        }
+        if (prefer_non_overhang && min_non_overhang != std::numeric_limits<double>::max()) {
+            // Only apply the non-overhang point if there is one.
+            path_idx = path_idx_non_overhang;
+            p        = p_non_overhang;
         }
     }
     
     // now split path_idx in two parts
     const ExtrusionPath &path = this->paths[path_idx];
-    ExtrusionPath p1(path.role, path.mm3_per_mm, path.width, path.height);
-    ExtrusionPath p2(path.role, path.mm3_per_mm, path.width, path.height);
+    ExtrusionPath p1(path.role(), path.mm3_per_mm, path.width, path.height);
+    ExtrusionPath p2(path.role(), path.mm3_per_mm, path.width, path.height);
     path.polyline.split_at(p, &p1.polyline, &p2.polyline);
     
     if (this->paths.size() == 1) {
@@ -275,7 +291,7 @@ ExtrusionLoop::has_overhang_point(const Point &point) const
         if (pos != -1) {
             // point belongs to this path
             // we consider it overhang only if it's not an endpoint
-            return (path->is_bridge() && pos > 0 && pos != (int)(path->polyline.points.size())-1);
+            return (is_bridge(path->role()) && pos > 0 && pos != (int)(path->polyline.points.size())-1);
         }
     }
     return false;

@@ -91,7 +91,12 @@ public:
 				return false;
 		}
 
+		// For the bridging flow, bottom_print_z will be above bottom_z to account for the vertical separation.
+		// For the non-bridging flow, bottom_print_z will be equal to bottom_z.
 		coordf_t bottom_print_z() const { return print_z - height; }
+
+		// To sort the extremes of top / bottom interface layers.
+		coordf_t extreme_z() const { return (this->layer_type == sltTopContact) ? this->bottom_z : this->print_z; }
 
 		SupporLayerType layer_type;
 		// Z used for printing, in unscaled coordinates.
@@ -127,17 +132,13 @@ public:
 public:
 	PrintObjectSupportMaterial(const PrintObject *object, const SlicingParameters &slicing_params);
 
-	// Height of the 1st layer is user configured as it is important for the print
-	// to stick to he print bed.
-	coordf_t	first_layer_height() 		const { return m_object_config->first_layer_height.value; }
-
 	// Is raft enabled?
 	bool 		has_raft() 					const { return m_slicing_params.has_raft(); }
 	// Has any support?
 	bool 		has_support()				const { return m_object_config->support_material.value; }
 	bool 		build_plate_only() 			const { return this->has_support() && m_object_config->support_material_buildplate_only.value; }
 
-	bool 		synchronize_layers()		const { return m_object_config->support_material_synchronize_layers.value; }
+	bool 		synchronize_layers()		const { return m_slicing_params.soluble_interface && m_object_config->support_material_synchronize_layers.value; }
 	bool 		has_contact_loops() 		const { return m_object_config->support_material_interface_contact_loops.value; }
 
 	// Generate support material for the object.
@@ -166,8 +167,7 @@ private:
 	    const PrintObject   &object,
 	    const MyLayersPtr   &bottom_contacts,
 	    const MyLayersPtr   &top_contacts,
-	    MyLayerStorage	 	&layer_storage,
-	    const coordf_t       max_object_layer_height) const;
+	    MyLayerStorage	 	&layer_storage) const;
 
 	// Fill in the base layers with polygons.
 	void generate_base_layers(
@@ -175,19 +175,18 @@ private:
 	    const MyLayersPtr   &bottom_contacts,
 	    const MyLayersPtr   &top_contacts,
 	    MyLayersPtr         &intermediate_layers,
-	    std::vector<Polygons> &layer_support_areas) const;
+	    const std::vector<Polygons> &layer_support_areas) const;
 
 	// Generate raft layers, also expand the 1st support layer
 	// in case there is no raft layer to improve support adhesion.
     MyLayersPtr generate_raft_base(
-	    const PrintObject   &object,
 	    const MyLayersPtr   &top_contacts,
-	    MyLayersPtr         &intermediate_layers,
-	    MyLayerStorage	 	&layer_storage) const;
+	    const MyLayersPtr   &interface_layers,
+	    const MyLayersPtr   &base_layers,
+	    MyLayerStorage      &layer_storage) const;
 
     // Turn some of the base layers into interface layers.
 	MyLayersPtr generate_interface_layers(
-	    const PrintObject   &object,
 	    const MyLayersPtr   &bottom_contacts,
 	    const MyLayersPtr   &top_contacts,
 	    MyLayersPtr         &intermediate_layers,
@@ -227,6 +226,8 @@ private:
 	Flow 			 	 m_first_layer_flow;
 	Flow 			 	 m_support_material_flow;
 	Flow 			 	 m_support_material_interface_flow;
+	// Is merging of regions allowed? Could the interface & base support regions be printed with the same extruder?
+	bool 				 m_can_merge_support_regions;
 
     coordf_t 			 m_support_layer_height_min;
 	coordf_t		 	 m_support_layer_height_max;

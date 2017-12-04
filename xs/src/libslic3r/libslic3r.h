@@ -14,7 +14,11 @@
 #include <boost/thread.hpp>
 
 #define SLIC3R_FORK_NAME "Slic3r Prusa Edition"
-#define SLIC3R_VERSION "1.31.6"
+#define SLIC3R_VERSION "1.38.3"
+#define SLIC3R_BUILD "UNKNOWN"
+
+typedef long coord_t;
+typedef double coordf_t;
 
 //FIXME This epsilon value is used for many non-related purposes:
 // For a threshold of a squared Euclidean distance,
@@ -38,12 +42,11 @@
 // 3mm ring around the top / bottom / bridging areas.
 //FIXME This is quite a lot.
 #define EXTERNAL_INFILL_MARGIN 3.
+//FIXME Better to use an inline function with an explicit return type.
+//inline coord_t scale_(coordf_t v) { return coord_t(floor(v / SCALING_FACTOR + 0.5f)); }
 #define scale_(val) ((val) / SCALING_FACTOR)
 #define unscale(val) ((val) * SCALING_FACTOR)
 #define SCALED_EPSILON scale_(EPSILON)
-typedef long coord_t;
-typedef double coordf_t;
-
 /* Implementation of CONFESS("foo"): */
 #ifdef _MSC_VER
 	#define CONFESS(...) confess_at(__FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
@@ -85,6 +88,15 @@ inline std::string debug_out_path(const char *name, ...)
 	#define PRINTF_ZU "%zu"
 #endif
 
+#ifndef UNUSED
+#define UNUSED(x) (void)(x)
+#endif /* UNUSED */
+
+// Detect whether the compiler supports C++11 noexcept exception specifications.
+#if defined(_MSC_VER) && _MSC_VER < 1900
+    #define noexcept throw()
+#endif
+
 // Write slices as SVG images into out directory during the 2D processing of the slices.
 // #define SLIC3R_DEBUG_SLICE_PROCESSING
 
@@ -98,43 +110,64 @@ inline void append_to(std::vector<T> &dst, const std::vector<T> &src)
     dst.insert(dst.end(), src.begin(), src.end());
 }
 
-template <class T> void
-_parallelize_do(std::queue<T>* queue, boost::mutex* queue_mutex, boost::function<void(T)> func)
+template <typename T>
+inline void append(std::vector<T>& dest, const std::vector<T>& src)
 {
-    //std::cout << "THREAD STARTED: " << boost::this_thread::get_id() << std::endl;
-    while (true) {
-        T i;
-        {
-            boost::lock_guard<boost::mutex> l(*queue_mutex);
-            if (queue->empty()) return;
-            i = queue->front();
-            queue->pop();
-        }
-        //std::cout << "  Thread " << boost::this_thread::get_id() << " processing item " << i << std::endl;
-        func(i);
-        boost::this_thread::interruption_point();
-    }
+    if (dest.empty())
+        dest = src;
+    else
+        dest.insert(dest.end(), src.begin(), src.end());
 }
 
-template <class T> void
-parallelize(std::queue<T> queue, boost::function<void(T)> func,
-    int threads_count = boost::thread::hardware_concurrency())
+template <typename T>
+inline void append(std::vector<T>& dest, std::vector<T>&& src)
 {
-    if (threads_count == 0) threads_count = 2;
-    boost::mutex queue_mutex;
-    boost::thread_group workers;
-    for (int i = 0; i < std::min(threads_count, int(queue.size())); ++ i)
-        workers.add_thread(new boost::thread(&_parallelize_do<T>, &queue, &queue_mutex, func));
-    workers.join_all();
+    if (dest.empty())
+        dest = std::move(src);
+    else
+        std::move(std::begin(src), std::end(src), std::back_inserter(dest));
+    src.clear();
+    src.shrink_to_fit();
 }
 
-template <class T> void
-parallelize(T start, T end, boost::function<void(T)> func,
-    int threads_count = boost::thread::hardware_concurrency())
+template <typename T>
+inline void remove_nulls(std::vector<T*> &vec)
 {
-    std::queue<T> queue;
-    for (T i = start; i <= end; ++i) queue.push(i);
-    parallelize(queue, func, threads_count);
+	vec.erase(
+    	std::remove_if(vec.begin(), vec.end(), [](const T *ptr) { return ptr == nullptr; }),
+    	vec.end());
+}
+
+template <typename T>
+inline void sort_remove_duplicates(std::vector<T> &vec)
+{
+	std::sort(vec.begin(), vec.end());
+	vec.erase(std::unique(vec.begin(), vec.end()), vec.end());
+}
+
+// Older compilers do not provide a std::make_unique template. Provide a simple one.
+template<typename T, typename... Args>
+inline std::unique_ptr<T> make_unique(Args&&... args) {
+    return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+}
+
+template<typename T>
+static inline T sqr(T x)
+{
+    return x * x;
+}
+
+template <typename T>
+static inline T clamp(const T low, const T high, const T value)
+{
+    return std::max(low, std::min(high, value));
+}
+
+template <typename T>
+static inline T lerp(const T a, const T b, const T t)
+{
+    assert(t >= T(-EPSILON) && t <= T(1.+EPSILON));
+    return (1. - t) * a + t * b;
 }
 
 } // namespace Slic3r

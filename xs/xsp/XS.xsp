@@ -18,6 +18,12 @@ VERSION()
     OUTPUT: RETVAL
 
 SV*
+BUILD()
+    CODE:
+        RETVAL = newSVpv(SLIC3R_BUILD, 0);
+    OUTPUT: RETVAL
+
+SV*
 DEBUG_OUT_PATH_PREFIX()
     CODE:
         RETVAL = newSVpv(SLIC3R_DEBUG_OUT_PATH_PREFIX, 0);
@@ -34,6 +40,73 @@ set_logging_level(level)
     unsigned int level;
     CODE:
         Slic3r::set_logging_level(level);
+
+void
+trace(level, message)
+    unsigned int level;
+    char        *message;
+    CODE:
+        Slic3r::trace(level, message);
+
+void
+set_var_dir(dir)
+    char  *dir;
+    CODE:
+        Slic3r::set_var_dir(dir);
+
+char*
+var_dir()
+    CODE:
+        RETVAL = const_cast<char*>(Slic3r::var_dir().c_str());
+    OUTPUT: RETVAL
+
+std::string
+var(file_name)
+    const char *file_name;
+    CODE:
+        RETVAL = Slic3r::var(file_name);
+    OUTPUT: RETVAL
+
+void
+set_data_dir(dir)
+    char  *dir;
+    CODE:
+        Slic3r::set_data_dir(dir);
+
+char*
+data_dir()
+    CODE:
+        RETVAL = const_cast<char*>(Slic3r::data_dir().c_str());
+    OUTPUT: RETVAL
+
+std::string
+config_path(section, name)
+    const char *section;
+    const char *name;
+    CODE:
+        RETVAL = Slic3r::config_path(section, name);
+    OUTPUT: RETVAL
+
+std::string
+encode_path(src)
+    const char *src;
+    CODE:
+        RETVAL = Slic3r::encode_path(src);
+    OUTPUT: RETVAL
+
+std::string
+decode_path(src)
+    const char *src;
+    CODE:
+        RETVAL = Slic3r::decode_path(src);
+    OUTPUT: RETVAL
+
+std::string
+normalize_utf8_nfc(src)
+    const char *src;
+    CODE:
+        RETVAL = Slic3r::normalize_utf8_nfc(src);
+    OUTPUT: RETVAL
 
 void
 xspp_test_croak_hangs_on_strawberry()

@@ -9,6 +9,7 @@ plan tests => 19;
 BEGIN {
     use FindBin;
     use lib "$FindBin::Bin/../lib";
+    use local::lib "$FindBin::Bin/../local-lib";
 }
 
 use List::Util qw(first sum);
@@ -162,7 +163,7 @@ SKIP:
 }
 
 for my $pattern (qw(rectilinear honeycomb hilbertcurve concentric)) {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('fill_pattern', $pattern);
     $config->set('external_fill_pattern', $pattern);
     $config->set('perimeters', 1);
@@ -193,13 +194,13 @@ for my $pattern (qw(rectilinear honeycomb hilbertcurve concentric)) {
 }
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('infill_only_where_needed', 1);
     $config->set('bottom_solid_layers', 0);
     $config->set('infill_extruder', 2);
     $config->set('infill_extrusion_width', 0.5);
     $config->set('fill_density', 40);
-    $config->set('cooling', 0);                 # for preventing speeds from being altered
+    $config->set('cooling', [ 0 ]);             # for preventing speeds from being altered
     $config->set('first_layer_speed', '100%');  # for preventing speeds from being altered
     
     my $test = sub {
@@ -239,7 +240,7 @@ for my $pattern (qw(rectilinear honeycomb hilbertcurve concentric)) {
 }
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('skirts', 0);
     $config->set('perimeters', 1);
     $config->set('fill_density', 0);
@@ -249,7 +250,7 @@ for my $pattern (qw(rectilinear honeycomb hilbertcurve concentric)) {
     $config->set('solid_infill_every_layers', 2);
     $config->set('perimeter_speed', 99);
     $config->set('external_perimeter_speed', 99);
-    $config->set('cooling', 0);
+    $config->set('cooling', [ 0 ]);
     $config->set('first_layer_speed', '100%');
     
     my $print = Slic3r::Test::init_print('20mm_cube', config => $config);
@@ -269,7 +270,7 @@ for my $pattern (qw(rectilinear honeycomb hilbertcurve concentric)) {
 }
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('skirts', 0);
     $config->set('perimeters', 3);
     $config->set('fill_density', 0);

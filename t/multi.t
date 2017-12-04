@@ -5,6 +5,7 @@ use warnings;
 BEGIN {
     use FindBin;
     use lib "$FindBin::Bin/../lib";
+    use local::lib "$FindBin::Bin/../local-lib";
 }
 
 use List::Util qw(first);
@@ -14,7 +15,7 @@ use Slic3r::Geometry::Clipper qw(offset);
 use Slic3r::Test;
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('raft_layers', 2);
     $config->set('infill_extruder', 2);
     $config->set('solid_infill_extruder', 3);
@@ -87,7 +88,7 @@ use Slic3r::Test;
 }
 
 {
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('support_material_extruder', 3);
     
     my $print = Slic3r::Test::init_print('20mm_cube', config => $config);
@@ -124,11 +125,11 @@ use Slic3r::Test;
     $upper_config->set('extruder', 2);
     $upper_config->set('bottom_solid_layers', 1);
     $upper_config->set('top_solid_layers', 0);
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('fill_density', 0);
     $config->set('solid_infill_speed', 99);
     $config->set('top_solid_infill_speed', 99);
-    $config->set('cooling', 0);                 # for preventing speeds from being altered
+    $config->set('cooling', [ 0 ]);             # for preventing speeds from being altered
     $config->set('first_layer_speed', '100%');  # for preventing speeds from being altered
     
     my $test = sub {
@@ -170,7 +171,7 @@ use Slic3r::Test;
     my $model = stacked_cubes();
     my $object = $model->objects->[0];
     
-    my $config = Slic3r::Config->new_from_defaults;
+    my $config = Slic3r::Config::new_from_defaults;
     $config->set('layer_height', 0.4);
     $config->set('first_layer_height', '100%');
     $config->set('skirts', 0);

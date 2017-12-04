@@ -8,6 +8,7 @@ use warnings;
 BEGIN {
     use FindBin;
     use lib "$FindBin::Bin/../lib";
+    use local::lib "$FindBin::Bin/../local-lib";
 }
 
 use Getopt::Long qw(:config no_auto_abbrev);
@@ -38,7 +39,6 @@ my %opt = (
 {
     # load model
     my $model = Slic3r::Model->read_from_file($ARGV[0]);
-    $model->add_default_instances;
     $model->center_instances_around_point(Slic3r::Pointf->new(100,100));
     my $mesh = $model->mesh;
     $mesh->translate(0, 0, -$mesh->bounding_box->z_min);

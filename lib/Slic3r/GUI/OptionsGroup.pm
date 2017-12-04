@@ -1,4 +1,4 @@
-# A dialog group object. Used by the Tab, SimpleTab, Preferences dialog, ManualControlDialog etc.
+# A dialog group object. Used by the Tab, Preferences dialog, ManualControlDialog etc.
 
 package Slic3r::GUI::OptionsGroup;
 use Moo;
@@ -280,6 +280,7 @@ has 'label_tooltip' => (is => 'rw', default => sub { "" });
 has 'sizer'         => (is => 'rw');
 has 'widget'        => (is => 'rw');
 has '_options'      => (is => 'ro', default => sub { [] });
+# Extra UI components after the label and the edit widget of the option.
 has '_extra_widgets' => (is => 'ro', default => sub { [] });
 
 # this method accepts a Slic3r::GUI::OptionsGroup::Option object
@@ -304,6 +305,8 @@ sub get_extra_widgets {
 }
 
 
+# Configuration of an option.
+# This very much reflects the content of the C++ ConfigOptionDef class.
 package Slic3r::GUI::OptionsGroup::Option;
 use Moo;
 
@@ -349,6 +352,8 @@ sub get_option {
     my $opt_id = ($opt_index == -1 ? $opt_key : "${opt_key}#${opt_index}");
     $self->_opt_map->{$opt_id} = [ $opt_key, $opt_index ];
     
+    # Slic3r::Config::Options is a C++ Slic3r::PrintConfigDef exported as a Perl hash of hashes.
+    # The C++ counterpart is a constant singleton.
     my $optdef = $Slic3r::Config::Options->{$opt_key};    # we should access this from $self->config
     my $default_value = $self->_get_config_value($opt_key, $opt_index, $optdef->{gui_flags} =~ /\bserialized\b/);
     
@@ -389,6 +394,7 @@ sub append_single_option_line {
     return $self->append_line($self->create_single_option_line($option, $opt_index));
 }
 
+# Initialize UI components with the config values.
 sub reload_config {
     my ($self) = @_;
     
@@ -412,8 +418,11 @@ sub _get_config_value {
     my ($self, $opt_key, $opt_index, $deserialize) = @_;
     
     if ($deserialize) {
+        # Want to edit a vector value (currently only multi-strings) in a single edit box.
+        # Aggregate the strings the old way.
+        # Currently used for the post_process config value only.
         die "Can't deserialize option indexed value" if $opt_index != -1;
-        return $self->config->serialize($opt_key);
+        return join(';', @{$self->config->get($opt_key)});
     } else {
         return $opt_index == -1
             ? $self->config->get($opt_key)
@@ -432,7 +441,10 @@ sub _on_change {
         my $field_value = $self->get_value($opt_id);
         if ($option->gui_flags =~ /\bserialized\b/) {
             die "Can't set serialized option indexed value" if $opt_index != -1;
-            $self->config->set_deserialize($opt_key, $field_value);
+            # Split a string to multiple strings by a semi-colon. This is the old way of storing multi-string values.
+            # Currently used for the post_process config value only.
+            my @values = split /;/, $field_value;
+            $self->config->set($opt_key, \@values);
         } else {
             if ($opt_index == -1) {
                 $self->config->set($opt_key, $field_value);
@@ -456,6 +468,8 @@ sub _on_kill_focus {
     $self->reload_config;
 }
 
+# Static text shown among the options.
+# Currently used for the filament cooling legend only.
 package Slic3r::GUI::OptionsGroup::StaticText;
 use Wx qw(:misc :systemsettings);
 use base 'Wx::StaticText';
